@@ -1,0 +1,302 @@
+Building configuration...
+
+Current configuration : 7675 bytes
+!
+! Last configuration change at 21:44:36 UTC Sat Jul 25 2026 by cisco
+!
+version 17.16
+service timestamps debug datetime msec
+service timestamps log datetime msec
+!
+hostname DIST2
+!
+boot-start-marker
+boot-end-marker
+!
+!
+logging discriminator EXCESS severity drops 6 msg-body drops EXCESSCOLL 
+logging buffered 50000
+no logging console
+no aaa new-model
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+no ip dhcp snooping information option
+ip audit notify log
+ip audit po max-events 100
+ip domain name local.lab
+ip cef
+login on-success log
+no ipv6 cef
+!
+!
+!
+!
+!
+!
+!
+!
+crypto pki trustpoint TP-self-signed-131184664
+ enrollment selfsigned
+ subject-name cn=IOS-Self-Signed-Certificate-131184664
+ revocation-check none
+ rsakeypair TP-self-signed-131184664
+ hash sha512
+!
+!
+crypto pki certificate chain TP-self-signed-131184664
+ certificate self-signed 01
+  3082032E 30820216 A0030201 02020101 300D0609 2A864886 F70D0101 0D050030 
+  30312E30 2C060355 04030C25 494F532D 53656C66 2D536967 6E65642D 43657274 
+  69666963 6174652D 31333131 38343636 34301E17 0D323630 33323931 38303135 
+  395A170D 33363033 32383138 30313539 5A303031 2E302C06 03550403 0C25494F 
+  532D5365 6C662D53 69676E65 642D4365 72746966 69636174 652D3133 31313834 
+  36363430 82012230 0D06092A 864886F7 0D010101 05000382 010F0030 82010A02 
+  82010100 9D765530 37EB17B5 F06B8F4A 938B12F8 60692196 48C2C702 CE5667E4 
+  1FF7A58F 48359DC7 0084AF36 F971446E B4834BD4 84D0B502 233F9755 04C51F59 
+  273EBB20 5D255301 A94DEA20 7E3B45A0 399CB361 5C132315 E753FF9E DCFABB57 
+  A7B49D9F 8DFD0A1A 0DAB1491 D28DD694 4C55F74F 0DCA1979 87084978 70EAD0EA 
+  E952A692 9B5BE20F 43FA622D F46F9117 60C6881A DABBB6EB AE017240 BA8823E2 
+  A5DF3A56 ADC450B9 105FFB72 11EBDFF1 71BD9DFC CEC4435F 34170769 304D5D8E 
+  477E3D82 62C3D5EC 456F7CBB 7E61151A 01577FC5 00E973BE 2E086DDE EA3E7AEB 
+  B88A4335 8CED5920 8A1B9E36 C8A5FD59 624FE8E3 1E6F9AD8 0918C12A 9C45005D 
+  5716A047 02030100 01A35330 51301D06 03551D0E 04160414 37FDCFBA 3F5B2030 
+  4F3ACC34 7DB8B90A B986AE0A 301F0603 551D2304 18301680 1437FDCF BA3F5B20 
+  304F3ACC 347DB8B9 0AB986AE 0A300F06 03551D13 0101FF04 05300301 01FF300D 
+  06092A86 4886F70D 01010D05 00038201 0100939E 74867EDE A6B19FC6 488F0BB7 
+  C6299D6E 8E9B4BD5 45450AC4 1B72AA76 4BE6AC52 D3AD283A B06CC515 7C78EA1F 
+  CF9ACB6A 38A0E031 76AD25C9 F324C75C 24EC8C55 38031118 16B78321 2947F87E 
+  D2C6B46A FB97168C 28830C39 594B4CB9 C1CE861D F014585B 3A1EF9B7 64335375 
+  417FBC8E C15D2AD6 DCDC3C80 BD97FB9B F3E44001 F8FBD77E CB45C277 40040E1B 
+  D37E5676 262C7A2F 458A8329 2D4C0E43 B93175FF 1499580F 1EA34AEE 1D784E1A 
+  78783FD3 5B4469D6 A50DD01F 7C9D23A1 57FD4267 EE7497BB FA647D78 51E4EEF1 
+  8630D4DB 223FD569 9146CCE6 6AB2002A 18D47D5C DBC9493A 74AD6F98 F95F05A5 
+  55AA231C 6C09171D 41365DC3 C2CE67B7 54C6
+  	quit
+!
+!
+memory free low-watermark processor 79497
+!
+!
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+spanning-tree vlan 10,30 priority 8192
+spanning-tree vlan 20,40 priority 4096
+enable secret 9 <REDACTED>
+!
+username cisco secret 9 <REDACTED>
+!
+vlan internal allocation policy ascending
+!
+!
+!
+!
+!
+interface Loopback0
+ ip address 4.4.4.4 255.255.255.255
+!
+interface Port-channel1
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,30
+ switchport mode trunk
+!
+interface Port-channel2
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+!
+interface Port-channel3
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30
+ switchport mode trunk
+!
+interface Port-channel4
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,40
+ switchport mode trunk
+!
+interface Port-channel10
+ no switchport
+ ip address 10.0.12.6 255.255.255.252
+ ip ospf network point-to-point
+!
+interface Port-channel11
+ no switchport
+ ip address 10.0.12.14 255.255.255.252
+ ip ospf network point-to-point
+!
+interface Ethernet0/0
+ no switchport
+ no ip address
+ channel-group 10 mode active
+!
+interface Ethernet0/1
+ no switchport
+ no ip address
+ channel-group 10 mode active
+!
+interface Ethernet0/2
+ no switchport
+ no ip address
+ channel-group 11 mode active
+!
+interface Ethernet0/3
+ no switchport
+ no ip address
+ channel-group 11 mode active
+!
+interface Ethernet1/0
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 2 mode active
+!
+interface Ethernet1/1
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 2 mode active
+!
+interface Ethernet1/2
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,30
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 1 mode active
+!
+interface Ethernet1/3
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,30
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 1 mode active
+!
+interface Ethernet2/0
+ description #Link to ACC3#
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 3 mode active
+!
+interface Ethernet2/1
+ description #Link to ACC3#
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 3 mode active
+!
+interface Ethernet2/2
+ description #link to ACC4#
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,40
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 4 mode active
+!
+interface Ethernet2/3
+ description #link to ACC4#
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,40
+ switchport mode trunk
+ bandwidth 1000000
+ channel-group 4 mode active
+!
+interface Vlan10
+ ip address 10.0.10.3 255.255.255.0
+ ip helper-address 10.0.12.1
+ ip access-group MGMT-RESTRICT in
+ standby 1 ip 10.0.10.1
+!
+interface Vlan20
+ ip address 10.0.20.3 255.255.255.0
+ ip helper-address 10.0.12.1
+ ip access-group MGMT-RESTRICT in
+ standby 2 ip 10.0.20.1
+ standby 2 priority 110
+ standby 2 preempt
+!
+interface Vlan30
+ ip address 10.0.30.3 255.255.255.0
+ ip helper-address 10.0.12.1
+ standby 3 ip 10.0.30.1
+!
+interface Vlan40
+ ip address 10.0.40.3 255.255.255.0
+ ip helper-address 10.0.12.1
+ ip access-group MGMT-RESTRICT in
+ standby 4 ip 10.0.40.1
+ standby 4 priority 110
+ standby 4 preempt
+!
+router ospf 1
+ passive-interface Vlan10
+ passive-interface Vlan20
+ passive-interface Vlan30
+ passive-interface Vlan40
+ network 4.4.4.4 0.0.0.0 area 0
+ network 10.0.10.0 0.0.0.255 area 0
+ network 10.0.12.6 0.0.0.0 area 0
+ network 10.0.12.14 0.0.0.0 area 0
+ network 10.0.20.0 0.0.0.255 area 0
+ network 10.0.30.0 0.0.0.255 area 0
+ network 10.0.40.0 0.0.0.255 area 0
+!
+ip forward-protocol nd
+ip forward-protocol udp
+!
+!
+ip http server
+ip http secure-server
+ip ssh bulk-mode 131072
+!
+ip access-list extended MGMT-RESTRICT
+ 10 deny ip 10.0.10.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
+ 20 deny ip 10.0.20.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
+ 30 deny ip 10.0.40.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
+ 40 permit ip any any
+no logging btrace
+!
+!
+!
+control-plane
+!
+!
+!
+line con 0
+ exec-timeout 0 0
+ logging synchronous
+ login local
+line aux 0
+line vty 0 4
+ exec-timeout 0 0
+ login local
+ transport input ssh
+!
+!
+end

@@ -1,0 +1,220 @@
+Building configuration...
+
+Current configuration : 5650 bytes
+!
+! Last configuration change at 03:11:13 UTC Sun Jul 26 2026 by cisco
+!
+version 17.16
+service timestamps debug datetime msec
+service timestamps log datetime msec
+!
+hostname ACC1
+!
+boot-start-marker
+boot-end-marker
+!
+!
+logging discriminator EXCESS severity drops 6 msg-body drops EXCESSCOLL
+logging buffered 50000
+no logging console
+no aaa new-model
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip dhcp snooping vlan 10
+no ip dhcp snooping information option
+ip dhcp snooping
+ip audit notify log
+ip audit po max-events 100
+ip domain name lab.local
+ip cef
+login on-success log
+no ipv6 cef
+!
+!
+!
+!
+!
+!
+!
+!
+crypto pki trustpoint TP-self-signed-131184665
+ enrollment selfsigned
+ subject-name cn=IOS-Self-Signed-Certificate-131184665
+ revocation-check none
+ rsakeypair TP-self-signed-131184665
+ hash sha512
+!
+!
+crypto pki certificate chain TP-self-signed-131184665
+ certificate self-signed 01
+  3082032E 30820216 A0030201 02020101 300D0609 2A864886 F70D0101 0D050030 
+  30312E30 2C060355 04030C25 494F532D 53656C66 2D536967 6E65642D 43657274 
+  69666963 6174652D 31333131 38343636 35301E17 0D323630 33323932 33313231 
+  315A170D 33363033 32383233 31323131 5A303031 2E302C06 03550403 0C25494F 
+  532D5365 6C662D53 69676E65 642D4365 72746966 69636174 652D3133 31313834 
+  36363530 82012230 0D06092A 864886F7 0D010101 05000382 010F0030 82010A02 
+  82010100 C8EF4650 2CC51670 6BFA7A49 B52521CE D235AEB7 AC13CA5C 02DC64C0 
+  C9D41F26 944BBC74 57D49611 02BAF0F3 A370CF95 A8563E8C 35A79FB2 7CB39D69 
+  5E282515 CD65F706 DBE30B1F 24FC747A CEED9244 215C940A 8F1E11BC ECBED237 
+  EC695EDC 37686285 A7972ADD 2BDAE0C0 30FDAAE2 56501C2B AA04ED85 8B2DF581 
+  712E5BB1 3538840E 324D72B2 186FF496 BF769F4B F7C2CD7E B46F3691 6FA9A09B 
+  B3A2D40D 6D76071C 427A98B6 B61CA142 5FE7141B DD68CC53 0599F2CC 8ED17AAD 
+  B3A1804E FE37AB7C 81D40638 933BE5BD CE4349A7 14F2949F C43BD95D 624D7869 
+  ADEB2D90 69702446 E666B614 253CD35C 555461BB 33577DC9 09AAFF5A 3DB4DB8F 
+  9D9269FB 02030100 01A35330 51301D06 03551D0E 04160414 6046A66E 6F64F274 
+  75BBD19C BCDFF5B7 2E18CA6A 301F0603 551D2304 18301680 146046A6 6E6F64F2 
+  7475BBD1 9CBCDFF5 B72E18CA 6A300F06 03551D13 0101FF04 05300301 01FF300D 
+  06092A86 4886F70D 01010D05 00038201 01004E2F 16714978 1D6E2454 145DB1D6 
+  3BDA44EA 6E4E208D 28B9619F 698F6F71 5023DFDA CA627253 DAFFDD8F 52ABC93F 
+  99596105 031B1359 1669303C B7AD4F82 232CDCF2 040690FE B81C7521 32654E28 
+  8056C30B F1E2F128 DA1822CC 2D6F33FA 0A224207 96E99D3C ED741597 97AC6904 
+  7AF19042 FE9411FC B91F8434 08973121 3BC5F262 C2EC522F 5485D0B4 F491235B 
+  2FC710B2 1804BCD9 15C7D77D 0F440287 6E820397 9CDEB2D9 7CD499B5 A4B3C982 
+  4F658B7D 8E1C2627 C715A9B4 11A8BE3D B84CCF73 98CFEE17 37B7EC28 882BF0E6 
+  B499B7E0 CC4BA7BB 8CCAF237 F8A96050 A2E5BED6 F23B6466 51738766 24B80365 
+  8ED0EFD6 B4EDA7D0 14D8B7D4 20AF9D6D 4D87
+  	quit
+!
+!
+memory free low-watermark processor 79497
+!
+!
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+enable secret 9 <REDACTED>
+!
+username cisco secret 9 <REDACTED>
+!
+vlan internal allocation policy ascending
+!
+!
+!
+!
+!
+interface Port-channel1
+ description #Link to DIST1#
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ ip arp inspection trust
+ ip dhcp snooping limit rate 10
+ ip dhcp snooping trust
+!
+interface Port-channel2
+ description #Link to DIST2#
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ ip arp inspection trust
+ ip dhcp snooping limit rate 10
+ ip dhcp snooping trust
+!
+interface Ethernet0/0
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ bandwidth 1000000
+ ip arp inspection trust
+ channel-group 1 mode active
+ ip dhcp snooping trust
+!
+interface Ethernet0/1
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ bandwidth 1000000
+ ip arp inspection trust
+ channel-group 1 mode active
+ ip dhcp snooping trust
+!
+interface Ethernet0/2
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ bandwidth 1000000
+ ip arp inspection trust
+ channel-group 2 mode active
+ ip dhcp snooping trust
+!
+interface Ethernet0/3
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,30
+ switchport mode trunk
+ bandwidth 1000000
+ ip arp inspection trust
+ channel-group 2 mode active
+ ip dhcp snooping trust
+!
+interface Ethernet1/0
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security maximum 2
+ switchport port-security mac-address sticky
+ switchport port-security mac-address sticky 5254.0010.ef81
+ switchport port-security mac-address sticky 5254.006a.49bf
+ switchport port-security
+ bandwidth 1000000
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet1/1
+ bandwidth 1000000
+!
+interface Ethernet1/2
+ bandwidth 1000000
+!
+interface Ethernet1/3
+ bandwidth 1000000
+!
+interface Vlan10
+ ip address 10.0.10.4 255.255.255.0
+!
+ip default-gateway 10.0.10.1
+ip forward-protocol nd
+ip forward-protocol udp
+!
+!
+ip http server
+ip http secure-server
+ip ssh bulk-mode 131072
+ip route 0.0.0.0 0.0.0.0 10.0.10.1
+!
+no logging btrace
+!
+!
+!
+control-plane
+!
+!
+!
+line con 0
+ exec-timeout 0 0
+ logging synchronous
+ login local
+line aux 0
+line vty 0 4
+ exec-timeout 0 0
+ login local
+ transport input ssh
+!
+ntp server 216.239.35.0
+ntp server 162.159.200.123
+!
+end
