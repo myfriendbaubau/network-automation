@@ -1,0 +1,61 @@
+---
+- name: Backup IOS running-configs
+  hosts: ios
+  gather_facts: false
+
+  tasks:
+    - name: Retrieve running-config
+      cisco.ios.ios_command:
+        commands: show running-config
+      register: config
+
+    - name: Write to backups/
+      ansible.builtin.copy:
+        content: "{{ config.stdout[0] }}\n"
+        dest: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+        mode: '0644'
+      delegate_to: localhost
+
+    - name: Scrub credential hashes
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+        regexp: "{{ item }}"
+        replace: '\1 <REDACTED>'
+      loop:
+        - '(enable secret \d) \S+'
+        - '(enable password) \S+'
+        - '(username \S+ (?:privilege \d+ )?secret \d) \S+'
+        - '(username \S+ password) \S+'
+        - '(key-string) \S+'
+        - '(pre-shared-key) \S+'
+      delegate_to: localhost
+
+- name: Backup ASA running-config
+  hosts: asa
+  gather_facts: false
+
+  tasks:
+    - name: Retrieve running-config
+      cisco.asa.asa_command:
+        commands: show running-config
+      register: config
+
+    - name: Write to backups/
+      ansible.builtin.copy:
+        content: "{{ config.stdout[0] }}\n"
+        dest: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+        mode: '0644'
+      delegate_to: localhost
+
+    - name: Scrub credential hashes
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+        regexp: "{{ item }}"
+        replace: '\1 <REDACTED>'
+      loop:
+        - '(enable password) \S+'
+        - '(username \S+ password) \S+'
+        - '(passwd) \S+'
+        - '(pre-shared-key) \S+'
+        - '(ikev2 (?:remote|local)-authentication pre-shared-key) \S+'
+      delegate_to: localhost

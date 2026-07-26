@@ -1,0 +1,4 @@
+inventory/group_vars/all/vault.yml
+*.retry
+__pycache__/
+.vault_pass

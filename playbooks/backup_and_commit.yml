@@ -1,0 +1,33 @@
+---
+- name: Backup all device configs
+  ansible.builtin.import_playbook: backup_configs.yml
+
+- name: Commit changes to Git
+  hosts: localhost
+  gather_facts: true
+  connection: local
+
+  tasks:
+    - name: Stage backup files
+      ansible.builtin.command:
+        cmd: git add backups/
+        chdir: "{{ playbook_dir }}/.."
+      changed_when: false
+
+    - name: Check for staged changes
+      ansible.builtin.command:
+        cmd: git diff --cached --quiet
+        chdir: "{{ playbook_dir }}/.."
+      register: git_status
+      failed_when: false
+      changed_when: false
+
+    - name: Commit if changed
+      ansible.builtin.command:
+        cmd: git commit -m "Config backup {{ ansible_date_time.iso8601 }}"
+        chdir: "{{ playbook_dir }}/.."
+      when: git_status.rc != 0
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ 'Drift detected and committed' if git_status.rc != 0 else 'No changes since last backup' }}"

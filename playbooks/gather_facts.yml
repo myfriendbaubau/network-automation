@@ -1,0 +1,22 @@
+---
+- name: Gather facts from IOS devices
+  hosts: ios
+  gather_facts: false
+  tasks:
+    - name: Collect device facts
+      cisco.ios.ios_facts:
+        gather_subset: [min]
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ ansible_net_hostname }} | IOS {{ ansible_net_version }}"
+
+- name: Gather facts from ASA
+  hosts: asa
+  gather_facts: false
+  tasks:
+    - name: Collect device facts
+      cisco.asa.asa_facts:
+        gather_subset: [min]
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ ansible_net_hostname }} | ASA {{ ansible_net_version }}"
