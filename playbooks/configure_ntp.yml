@@ -1,0 +1,24 @@
+---
+- name: Configure NTP on IOS devices
+  hosts: ios
+  gather_facts: false
+
+  tasks:
+    - name: Set NTP servers
+      cisco.ios.ios_config:
+        lines:
+          - ntp server 216.239.35.0
+          - ntp server 162.159.200.123
+        save_when: modified
+
+- name: Configure NTP on ASA
+  hosts: asa
+  gather_facts: false
+
+  tasks:
+    - name: Set NTP servers
+      cisco.asa.asa_config:
+        lines:
+          - ntp server 216.239.35.0
+          - ntp server 162.159.200.123
+        save_when: modified

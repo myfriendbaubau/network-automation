@@ -1,0 +1,8 @@
+---
+ansible_connection: ansible.netcommon.network_cli
+ansible_network_os: cisco.asa.asa
+ansible_become: true
+ansible_become_method: ansible.netcommon.enable
+ansible_user: "{{ vault_asa_user }}"
+ansible_password: "{{ vault_asa_password }}"
+ansible_become_password: "{{ vault_asa_enable_password }}"
