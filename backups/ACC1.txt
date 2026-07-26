@@ -1,8 +1,8 @@
 Building configuration...
 
-Current configuration : 5679 bytes
+Current configuration : 5650 bytes
 !
-! Last configuration change at 10:53:57 UTC Sun Jul 26 2026 by cisco
+! Last configuration change at 11:13:59 UTC Sun Jul 26 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -203,7 +203,6 @@ no logging btrace
 control-plane
 !
 !
-banner motd ^CDriftttttttttt^C
 !
 line con 0
  exec-timeout 0 0
