@@ -1,9 +1,9 @@
 Building configuration...
 
-Current configuration : 5795 bytes
+Current configuration : 5828 bytes
 !
-! Last configuration change at 10:12:43 UTC Tue Jul 28 2026 by cisco
-! NVRAM config last updated at 10:12:44 UTC Tue Jul 28 2026 by cisco
+! Last configuration change at 13:34:11 UTC Tue Jul 28 2026 by cisco
+! NVRAM config last updated at 13:34:13 UTC Tue Jul 28 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -187,6 +187,7 @@ interface Ethernet1/3
  bandwidth 1000000
 !
 interface Vlan20
+ description GUESTS - management
  ip address 10.0.20.4 255.255.255.0
 !
 ip default-gateway 10.20.0.1

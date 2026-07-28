@@ -1,8 +1,8 @@
 Building configuration...
 
-Current configuration : 5835 bytes
+Current configuration : 5866 bytes
 !
-! Last configuration change at 10:12:44 UTC Tue Jul 28 2026 by cisco
+! Last configuration change at 13:34:32 UTC Tue Jul 28 2026 by cisco
 ! NVRAM config last updated at 10:12:44 UTC Tue Jul 28 2026 by cisco
 !
 version 17.16
@@ -189,6 +189,7 @@ interface Ethernet1/3
  bandwidth 1000000
 !
 interface Vlan30
+ description MGMT - management
  ip address 10.0.30.4 255.255.255.0
 !
 ip default-gateway 10.0.30.1
