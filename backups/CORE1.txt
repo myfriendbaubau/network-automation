@@ -21,7 +21,7 @@ boot-end-marker
 !
 !
 no logging console
-enable secret 9 REDACTED
+enable secret 9 <REDACTED>
 !
 no aaa new-model
 !
@@ -175,7 +175,7 @@ memory free low-watermark processor 71464
 !
 spanning-tree extend system-id
 !
-username cisco secret 9 REDACTED
+username cisco secret 9 <REDACTED>
 !
 redundancy
 !

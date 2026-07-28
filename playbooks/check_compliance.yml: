@@ -1,0 +1,16 @@
+- name: Compliance check
+  hosts: ios
+  gather_facts: false
+
+  tasks:
+    - name: Get NTP config
+      cisco.ios.ios_command:
+        commands: show running-config | include ntp server
+      register: ntp_check
+
+    - name: Assert NTP is configured
+      ansible.builtin.assert:
+        that:
+          - ntp_check.stdout[0] | length > 0
+        fail_msg: "NTP is NOT configured"
+        success_msg: "NTP configured"

@@ -2,7 +2,6 @@
 - name: Backup IOS running-configs
   hosts: ios
   gather_facts: false
-
   tasks:
     - name: Retrieve running-config
       cisco.ios.ios_command:
@@ -33,7 +32,6 @@
 - name: Backup ASA running-config
   hosts: asa
   gather_facts: false
-
   tasks:
     - name: Retrieve running-config
       cisco.asa.asa_command:
@@ -57,5 +55,4 @@
         - '(username \S+ password) \S+'
         - '(passwd) \S+'
         - '(pre-shared-key) \S+'
-        - '(ikev2 (?:remote|local)-authentication pre-shared-key) \S+'
       delegate_to: localhost
