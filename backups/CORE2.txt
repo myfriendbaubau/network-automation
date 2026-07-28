@@ -1,13 +1,14 @@
 Building configuration...
 
-Current configuration : 7643 bytes
+Current configuration : 7671 bytes
 !
-! Last configuration change at 15:38:02 UTC Fri Jul 24 2026 by cisco
-! NVRAM config last updated at 17:17:24 UTC Mon Jul 27 2026 by cisco
+! Last configuration change at 10:12:38 UTC Tue Jul 28 2026 by cisco
+! NVRAM config last updated at 10:12:39 UTC Tue Jul 28 2026 by cisco
 !
 version 17.3
 service timestamps debug datetime msec
 service timestamps log datetime msec
+service password-encryption
 service call-home
 platform qfp utilization monitor load 80
 platform punt-keepalive disable-kernel-core

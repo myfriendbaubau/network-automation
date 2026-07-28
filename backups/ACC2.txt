@@ -1,12 +1,14 @@
 Building configuration...
 
-Current configuration : 5698 bytes
+Current configuration : 5795 bytes
 !
-! Last configuration change at 17:17:29 UTC Mon Jul 27 2026 by cisco
+! Last configuration change at 10:12:43 UTC Tue Jul 28 2026 by cisco
+! NVRAM config last updated at 10:12:44 UTC Tue Jul 28 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
 service timestamps log datetime msec
+service password-encryption
 !
 hostname ACC2
 !
