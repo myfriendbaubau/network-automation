@@ -1,7 +1,6 @@
 # Network Automation — Ansible
 
-Config-as-code for the 3-tier lab. An Ansible controller inside the fabric manages all nine devices over SSH, backs up their configs to Git, and detects drift automatically.
-
+Config-as-code for the 3-tier lab. An Ansible controller inside the fabric manages all nine devices over SSH, backs up their configs to Git, detects drift, verifies compliance, and generates device configuration from templates.
 
 Builds on the management network described in [`management-network.md`](./management-network.md).
 The network itself is documented here:
@@ -16,11 +15,21 @@ https://github.com/myfriendbaubau/3-Tier-Enterprise-Network-Lab
 | Inventory and fact gathering across 9 devices | `gather_facts.yml` |
 | Config backup with credential scrubbing | `backup_configs.yml` |
 | Backup + Git commit on change (drift detection) | `backup_and_commit.yml` |
+| Compliance checking across 4 device layers | `check_compliance.yml` |
+| Config generation from Jinja2 templates | `generate_configs.yml` |
+| Deploy templated config to devices | `deploy_configs.yml` |
 | NTP configuration | `configure_ntp.yml` |
-| Compliance checking across 4 device layers      | `check_compliance.yml`  |
 
 Controller: Ubuntu 24.04, `10.0.50.10`, attached to CORE1 `Gi7`.
 Managed devices: CORE1, CORE2, DIST1, DIST2, ACC1–4 (`cisco.ios`), asav-0 (`cisco.asa`).
+
+Three capabilities, three different questions:
+
+| Playbook | Question it answers |
+|---|---|
+| `backup_and_commit.yml` | What changed, and when? |
+| `check_compliance.yml` | Is the network in its intended state? |
+| `deploy_configs.yml` | Make the network match the intended state |
 
 ---
 
@@ -36,13 +45,19 @@ network-automation/
 │       │   ├── vars.yml          # references vault variables
 │       │   └── vault.yml         # ansible-vault encrypted, git-ignored
 │       ├── ios.yml
-│       └── asa.yml
+│       ├── asa.yml
+│       └── access.yml            # data model for templated config
 ├── playbooks/
 │   ├── gather_facts.yml
 │   ├── backup_configs.yml
 │   ├── backup_and_commit.yml
-|   |── check_compliance.yml
+│   ├── check_compliance.yml
+│   ├── generate_configs.yml
+│   ├── deploy_configs.yml
 │   └── configure_ntp.yml
+├── templates/
+│   └── access_mgmt.j2            # Jinja2 config template
+├── generated/                    # rendered config, for review
 └── backups/                      # one scrubbed running-config per device
 ```
 
@@ -178,24 +193,46 @@ ansible-playbook playbooks/configure_ntp.yml                               # all
 Re-running should report `changed=0`. Idempotency is what separates configuration management from a script that blindly retypes commands, and it is what makes drift detection meaningful.
 
 ---
+
 ## 8. Compliance checking
 
-Backup answers *what changed*. Compliance answers *is the network in its intended
-state* — a different question, and the one that catches config which was never
-applied in the first place.
+Backup answers *what changed*. Compliance answers *is the network in its intended state* — a different question, and the one that catches config which was never applied in the first place.
 
-`check_compliance.yml` runs 12 checks across four layer-scoped plays (baseline
-security on all devices, then access, distribution and core specifics), reporting
-pass/fail per device.
+`check_compliance.yml` runs 12 checks across four layer-scoped plays (baseline security on all devices, then access, distribution and core specifics), reporting pass/fail per device.
 
-Its first run found `service password-encryption` missing on all eight devices —
-specified in the original build document, never applied.
+Its first run found `service password-encryption` missing on all eight devices — specified in the original build document, never applied.
 
 📄 Full detail: [`compliance-checking.md`](./compliance-checking.md)
 
+---
 
+## 9. Config templating
 
-## 9. Problems encountered and how they were solved
+Backup observes, compliance verifies, templating **defines**. Management SVI configuration for the access switches is generated from a Jinja2 template and a YAML data model, with `ios_config` sending only the lines that differ from running-config.
+
+```jinja
+{% raw %}{% set svi = mgmt_svi[inventory_hostname] %}
+interface Vlan{{ svi.vlan }}
+ description {{ svi.name }} - management
+ ip address {{ svi.ip }} 255.255.255.0
+ip route 0.0.0.0 0.0.0.0 {{ svi.gateway }}{% endraw %}
+```
+
+One template serves all four switches; adding a fifth means adding four lines of data and changing nothing else.
+
+A dry run shows the exact CLI commands a variable change would produce, before anything is touched:
+
+```bash
+ansible-playbook playbooks/deploy_configs.yml --check --diff -v
+```
+
+This also relocates risk. Config is no longer mistyped at the CLI — it is generated faithfully from data, which means an error in the data is reproduced exactly across every device the template covers.
+
+📄 Full detail: [`config-templating.md`](./config-templating.md)
+
+---
+
+## 10. Problems encountered and how they were solved
 
 ### A successful playbook run doesn't prove the config is there
 
@@ -210,7 +247,7 @@ Six devices had the configuration. Two didn't, and nothing in the output said so
 
 Ansible answers one question: did its tasks complete. That is not the same question as whether the network ended up in the intended state, and the gap between the two is where silent failures live.
 
-Re-running with `--limit core` fixed the immediate problem. The broader fix is a compliance playbook — one that asserts intended state (NTP configured, SSH enabled, Telnet disabled, ACLs applied) and reports pass or fail per device, rather than pushing config and trusting the exit code. Verifying state is a separate capability from changing it.
+Re-running with `--limit core` fixed the immediate problem. The broader fix is a compliance playbook — one that asserts intended state and reports pass or fail per device, rather than pushing config and trusting the exit code. Verifying state is a separate capability from changing it.
 
 ---
 
@@ -240,3 +277,14 @@ ansible_become_password: "{{ vault_enable_password }}"
 
 The alternative — `privilege level 15` under `line vty` — also works, but relies on line configuration rather than an explicit escalation step, which is harder to audit.
 
+---
+
+### A setup script that was safe to run once, destructive to run twice
+
+A bootstrap script written to rebuild the controller used `cat > file <<EOF` for every config file — which replaces unconditionally, with no check for whether the file already exists.
+
+Running it a second time silently overwrote the vault file back to placeholder values and removed the credential-scrubbing task from the backup playbook. Neither failure announced itself.
+
+The hourly cron job then failed **32 consecutive times** into a log nobody was reading, and unscrubbed configuration reached the public repository in the meantime.
+
+The lesson is not about `cat >`. It is that automation which fails silently is worse than no automation, because you stop checking manually once you believe something is handled. Setup scripts should be idempotent — create if missing, never clobber — and scheduled jobs need a failure signal that is visible without going looking for it.
