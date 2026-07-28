@@ -7,7 +7,7 @@
 ASA Version 9.23(1) 
 !
 hostname ASAV-0
-enable password ***** pbkdf2
+enable password <REDACTED> pbkdf2
 service-module 0 keepalive-timeout 4
 service-module 0 keepalive-counter 6
 names
@@ -222,11 +222,11 @@ no threat-detection statistics tcp-intercept
 ntp server 216.239.35.0
 ntp server 162.159.200.123
 dynamic-access-policy-record DfltAccessPolicy
-username cisco password ***** pbkdf2 privilege 15
+username cisco password <REDACTED> pbkdf2 privilege 15
 tunnel-group 13.62.226.44 type ipsec-l2l
 tunnel-group 13.62.226.44 ipsec-attributes
- ikev2 remote-authentication pre-shared-key *****
- ikev2 local-authentication pre-shared-key *****
+ ikev2 remote-authentication pre-shared-key <REDACTED>
+ ikev2 local-authentication pre-shared-key <REDACTED>
 !
 class-map inspection_default
  match default-inspection-traffic

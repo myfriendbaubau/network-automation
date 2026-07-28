@@ -1,0 +1,185 @@
+---
+# ============================================================
+# PLAY 1 — baseline security, applies to every IOS device
+# ============================================================
+- name: Baseline security checks
+  hosts: ios
+  gather_facts: false
+
+  tasks:
+    - name: Gather baseline config
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include ^ntp server
+          - show running-config | include transport input
+          - show running-config | include ^enable secret
+          - show running-config | include ^service password-encryption
+          - show ip ssh
+      register: base
+
+    - name: NTP is configured
+      ansible.builtin.assert:
+        that: base.stdout[0] | length > 0
+        fail_msg: "no ntp server configured"
+      register: c_ntp
+      ignore_errors: true
+
+    - name: Telnet is disabled on VTY
+      ansible.builtin.assert:
+        that: "'telnet' not in base.stdout[1]"
+        fail_msg: "telnet allowed on vty"
+      register: c_telnet
+      ignore_errors: true
+
+    - name: Enable secret is set
+      ansible.builtin.assert:
+        that: base.stdout[2] | length > 0
+        fail_msg: "no enable secret (weak or missing)"
+      register: c_secret
+      ignore_errors: true
+
+    - name: Password encryption is on
+      ansible.builtin.assert:
+        that: base.stdout[3] | length > 0
+        fail_msg: "service password-encryption missing"
+      register: c_pwenc
+      ignore_errors: true
+
+    - name: SSH version 2
+      ansible.builtin.assert:
+        that: "'version 2' in base.stdout[4]"
+        fail_msg: "ssh version 2 not enforced"
+      register: c_ssh
+      ignore_errors: true
+
+    - name: Baseline result
+      ansible.builtin.debug:
+        msg:
+          - "NTP           {{ 'FAIL' if c_ntp.failed    else 'pass' }}"
+          - "Telnet off    {{ 'FAIL' if c_telnet.failed else 'pass' }}"
+          - "Enable secret {{ 'FAIL' if c_secret.failed else 'pass' }}"
+          - "Pwd encrypt   {{ 'FAIL' if c_pwenc.failed  else 'pass' }}"
+          - "SSH v2        {{ 'FAIL' if c_ssh.failed    else 'pass' }}"
+
+# ============================================================
+# PLAY 2 — access layer only
+# ============================================================
+- name: Access layer checks
+  hosts: access
+  gather_facts: false
+
+  tasks:
+    - name: Gather access config
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include switchport port-security$
+          - show running-config | include spanning-tree bpduguard
+          - show running-config | include ^ip dhcp snooping$
+      register: acc
+
+    - name: Port-security enabled
+      ansible.builtin.assert:
+        that: acc.stdout[0] | length > 0
+        fail_msg: "no port-security on any interface"
+      register: c_portsec
+      ignore_errors: true
+
+    - name: BPDU guard enabled
+      ansible.builtin.assert:
+        that: acc.stdout[1] | length > 0
+        fail_msg: "no bpduguard configured"
+      register: c_bpdu
+      ignore_errors: true
+
+    - name: DHCP snooping enabled
+      ansible.builtin.assert:
+        that: acc.stdout[2] | length > 0
+        fail_msg: "dhcp snooping not enabled"
+      register: c_snoop
+      ignore_errors: true
+
+    - name: Access result
+      ansible.builtin.debug:
+        msg:
+          - "Port-security {{ 'FAIL' if c_portsec.failed else 'pass' }}"
+          - "BPDU guard    {{ 'FAIL' if c_bpdu.failed    else 'pass' }}"
+          - "DHCP snoop    {{ 'FAIL' if c_snoop.failed   else 'pass' }}"
+
+# ============================================================
+# PLAY 3 — distribution layer only
+# ============================================================
+- name: Distribution layer checks
+  hosts: distribution
+  gather_facts: false
+
+  tasks:
+    - name: Gather distribution config
+      cisco.ios.ios_command:
+        commands:
+          - show ip access-lists MGMT-RESTRICT
+          - show running-config | include ip access-group MGMT-RESTRICT
+          - show running-config | include standby .* priority
+      register: dist
+
+    - name: MGMT-RESTRICT ACL exists with 3 deny rules
+      ansible.builtin.assert:
+        that: dist.stdout[0] | regex_findall('deny') | length == 3
+        fail_msg: "expected 3 deny rules, found {{ dist.stdout[0] | regex_findall('deny') | length }}"
+      register: c_acl
+      ignore_errors: true
+
+    - name: ACL applied to 3 SVIs
+      ansible.builtin.assert:
+        that: dist.stdout[1] | regex_findall('access-group') | length == 3
+        fail_msg: "ACL applied to {{ dist.stdout[1] | regex_findall('access-group') | length }} interfaces, expected 3"
+      register: c_aclapply
+      ignore_errors: true
+
+    - name: HSRP priority 110 present
+      ansible.builtin.assert:
+        that: "'110' in dist.stdout[2]"
+        fail_msg: "no HSRP priority 110 - this switch is not active for any VLAN"
+      register: c_hsrp
+      ignore_errors: true
+
+    - name: Distribution result
+      ansible.builtin.debug:
+        msg:
+          - "ACL rules     {{ 'FAIL' if c_acl.failed      else 'pass' }}"
+          - "ACL applied   {{ 'FAIL' if c_aclapply.failed else 'pass' }}"
+          - "HSRP priority {{ 'FAIL' if c_hsrp.failed     else 'pass' }}"
+
+# ============================================================
+# PLAY 4 — core layer only
+# ============================================================
+- name: Core layer checks
+  hosts: core
+  gather_facts: false
+
+  tasks:
+    - name: Gather core config
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include ^router ospf
+          - show ip ospf neighbor
+      register: core
+
+    - name: OSPF process running
+      ansible.builtin.assert:
+        that: core.stdout[0] | length > 0
+        fail_msg: "no ospf process configured"
+      register: c_ospf
+      ignore_errors: true
+
+    - name: All OSPF neighbours FULL
+      ansible.builtin.assert:
+        that: "'EXSTART' not in core.stdout[1] and 'INIT' not in core.stdout[1]"
+        fail_msg: "one or more OSPF neighbours not in FULL state"
+      register: c_nbr
+      ignore_errors: true
+
+    - name: Core result
+      ansible.builtin.debug:
+        msg:
+          - "OSPF running  {{ 'FAIL' if c_ospf.failed else 'pass' }}"
+          - "Neighbours    {{ 'FAIL' if c_nbr.failed  else 'pass' }}"

@@ -30,4 +30,10 @@
 
     - name: Report
       ansible.builtin.debug:
-        msg: "{{ 'Drift detected and committed' if git_status.rc != 0 else 'No changes since last backup' }}"
+        msg: "Backup complete"
+
+    - name: Push to GitHub
+      ansible.builtin.command:
+        cmd: git push
+        chdir: "{{ playbook_dir }}/.."
+      when: git_status.rc != 0
