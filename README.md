@@ -17,6 +17,7 @@ https://github.com/myfriendbaubau/3-Tier-Enterprise-Network-Lab
 | Config backup with credential scrubbing | `backup_configs.yml` |
 | Backup + Git commit on change (drift detection) | `backup_and_commit.yml` |
 | NTP configuration | `configure_ntp.yml` |
+| Compliance checking across 4 device layers      | `check_compliance.yml`  |
 
 Controller: Ubuntu 24.04, `10.0.50.10`, attached to CORE1 `Gi7`.
 Managed devices: CORE1, CORE2, DIST1, DIST2, ACC1–4 (`cisco.ios`), asav-0 (`cisco.asa`).
@@ -40,6 +41,7 @@ network-automation/
 │   ├── gather_facts.yml
 │   ├── backup_configs.yml
 │   ├── backup_and_commit.yml
+|   |── check_compliance.yml
 │   └── configure_ntp.yml
 └── backups/                      # one scrubbed running-config per device
 ```
@@ -176,8 +178,24 @@ ansible-playbook playbooks/configure_ntp.yml                               # all
 Re-running should report `changed=0`. Idempotency is what separates configuration management from a script that blindly retypes commands, and it is what makes drift detection meaningful.
 
 ---
+## 8. Compliance checking
 
-## 8. Problems encountered and how they were solved
+Backup answers *what changed*. Compliance answers *is the network in its intended
+state* — a different question, and the one that catches config which was never
+applied in the first place.
+
+`check_compliance.yml` runs 12 checks across four layer-scoped plays (baseline
+security on all devices, then access, distribution and core specifics), reporting
+pass/fail per device.
+
+Its first run found `service password-encryption` missing on all eight devices —
+specified in the original build document, never applied.
+
+📄 Full detail: [`compliance-checking.md`](./compliance-checking.md)
+
+
+
+## 9. Problems encountered and how they were solved
 
 ### A successful playbook run doesn't prove the config is there
 
