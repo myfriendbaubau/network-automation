@@ -1,8 +1,8 @@
 Building configuration...
 
-Current configuration : 7675 bytes
+Current configuration : 7726 bytes
 !
-! Last configuration change at 21:44:36 UTC Sat Jul 25 2026 by cisco
+! Last configuration change at 17:17:24 UTC Mon Jul 27 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -92,9 +92,9 @@ spanning-tree mode rapid-pvst
 spanning-tree extend system-id
 spanning-tree vlan 10,30 priority 8192
 spanning-tree vlan 20,40 priority 4096
-enable secret 9 <REDACTED>
+enable secret 9 REDACTED
 !
-username cisco secret 9 <REDACTED>
+username cisco secret 9 REDACTED
 !
 vlan internal allocation policy ascending
 !
@@ -298,5 +298,7 @@ line vty 0 4
  login local
  transport input ssh
 !
+ntp server 216.239.35.0
+ntp server 162.159.200.123
 !
 end

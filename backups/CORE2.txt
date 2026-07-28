@@ -1,8 +1,9 @@
 Building configuration...
 
-Current configuration : 7574 bytes
+Current configuration : 7643 bytes
 !
 ! Last configuration change at 15:38:02 UTC Fri Jul 24 2026 by cisco
+! NVRAM config last updated at 17:17:24 UTC Mon Jul 27 2026 by cisco
 !
 version 17.3
 service timestamps debug datetime msec
@@ -19,7 +20,7 @@ boot-end-marker
 !
 !
 no logging console
-enable secret 9 <REDACTED>
+enable secret 9 REDACTED
 !
 no aaa new-model
 !
@@ -141,7 +142,7 @@ memory free low-watermark processor 71464
 !
 spanning-tree extend system-id
 !
-username cisco secret 9 <REDACTED>
+username cisco secret 9 REDACTED
 !
 redundancy
 !
