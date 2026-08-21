@@ -1,12 +1,13 @@
 Building configuration...
 
-Current configuration : 7745 bytes
+Current configuration : 7898 bytes
 !
-! Last configuration change at 15:16:25 UTC Fri Aug 21 2026
+! Last configuration change at 18:36:34 UTC Fri Aug 21 2026 by cisco
+! NVRAM config last updated at 18:36:34 UTC Fri Aug 21 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
-service timestamps log datetime msec
+service timestamps log datetime msec localtime show-timezone
 service password-encryption
 !
 hostname DIST2
@@ -282,6 +283,8 @@ ip access-list extended MGMT-RESTRICT
  30 deny ip 10.0.40.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
  40 permit ip any any
 no logging btrace
+logging origin-id hostname
+logging host 10.0.60.10
 !
 !
 !

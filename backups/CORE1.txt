@@ -1,13 +1,13 @@
 Building configuration...
 
-Current configuration : 8678 bytes
+Current configuration : 8753 bytes
 !
-! Last configuration change at 17:15:38 UTC Fri Aug 21 2026 by cisco
-! NVRAM config last updated at 17:15:39 UTC Fri Aug 21 2026 by cisco
+! Last configuration change at 18:36:19 UTC Fri Aug 21 2026 by cisco
+! NVRAM config last updated at 18:36:20 UTC Fri Aug 21 2026 by cisco
 !
 version 17.3
 service timestamps debug datetime msec
-service timestamps log datetime msec
+service timestamps log datetime msec localtime show-timezone
 service password-encryption
 service call-home
 platform qfp utilization monitor load 80
@@ -294,6 +294,8 @@ ip route 0.0.0.0 0.0.0.0 10.0.12.21
 ip ssh version 2
 !
 !
+logging origin-id hostname
+logging host 10.0.60.10
 !
 !
 !

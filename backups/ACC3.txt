@@ -1,12 +1,13 @@
 Building configuration...
 
-Current configuration : 5757 bytes
+Current configuration : 5910 bytes
 !
-! Last configuration change at 15:16:38 UTC Fri Aug 21 2026
+! Last configuration change at 18:36:47 UTC Fri Aug 21 2026 by cisco
+! NVRAM config last updated at 18:36:48 UTC Fri Aug 21 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
-service timestamps log datetime msec
+service timestamps log datetime msec localtime show-timezone
 service password-encryption
 !
 hostname ACC3
@@ -201,6 +202,8 @@ ip ssh bulk-mode 131072
 ip route 0.0.0.0 0.0.0.0 10.0.30.1
 !
 no logging btrace
+logging origin-id hostname
+logging host 10.0.60.10
 !
 !
 !
