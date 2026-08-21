@@ -1,8 +1,9 @@
 Building configuration...
 
-Current configuration : 8521 bytes
+Current configuration : 8678 bytes
 !
-! Last configuration change at 15:18:29 UTC Fri Aug 21 2026
+! Last configuration change at 17:15:38 UTC Fri Aug 21 2026 by cisco
+! NVRAM config last updated at 17:15:39 UTC Fri Aug 21 2026 by cisco
 !
 version 17.3
 service timestamps debug datetime msec
@@ -269,8 +270,8 @@ interface GigabitEthernet7
  no mop sysid
 !
 interface GigabitEthernet8
- no ip address
- shutdown
+ description TS-router lab-side
+ ip address 10.0.60.1 255.255.255.0
  negotiation auto
  no mop enabled
  no mop sysid
@@ -282,6 +283,7 @@ router ospf 1
  network 10.0.12.5 0.0.0.0 area 0
  network 10.0.12.17 0.0.0.0 area 0
  network 10.0.50.1 0.0.0.0 area 0
+ network 10.0.60.0 0.0.0.255 area 0
  default-information originate
 !
 ip forward-protocol nd
