@@ -31,7 +31,12 @@
     - name: Report
       ansible.builtin.debug:
         msg: "Backup complete"
-
+    - name: Sync with remote before pushing
+      ansible.builtin.command:
+        cmd: git pull --no-rebase --no-edit
+        chdir: "{{ playbook_dir }}/.."
+      register: git_pull
+      changed_when: "'Already up to date' not in git_pull.stdout"
     - name: Push to GitHub
       ansible.builtin.command:
         cmd: git push

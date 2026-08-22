@@ -1,0 +1,22 @@
+---
+mgmt_svi:
+  ACC1:
+    vlan: 10
+    name: DATA
+    ip: 10.0.10.4
+    gateway: 10.0.10.1
+  ACC2:
+    vlan: 20
+    name: GUESTS
+    ip: 10.0.20.4
+    gateway: 10.0.20.1
+  ACC3:
+    vlan: 30
+    name: MGMT
+    ip: 10.0.30.4
+    gateway: 10.0.30.1
+  ACC4:
+    vlan: 40
+    name: SERVERS
+    ip: 10.0.40.4
+    gateway: 10.0.40.1

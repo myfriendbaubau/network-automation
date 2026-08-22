@@ -1,0 +1,11 @@
+!
+! Management SVI for {{ inventory_hostname }}
+! Generated from template - do not edit on device
+!
+interface Vlan{{ mgmt_svi[inventory_hostname].vlan }}
+ description {{ mgmt_svi[inventory_hostname].name }} - management
+ ip address {{ mgmt_svi[inventory_hostname].ip }} 255.255.255.0
+ 
+!
+ip route 0.0.0.0 0.0.0.0 {{ mgmt_svi[inventory_hostname].gateway }}
+!

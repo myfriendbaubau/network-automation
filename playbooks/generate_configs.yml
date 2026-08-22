@@ -1,0 +1,12 @@
+---
+- name: Generate access switch configs
+  hosts: access
+  gather_facts: false
+
+  tasks:
+    - name: Render template to file
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/access_mgmt.j2"
+        dest: "{{ playbook_dir }}/../generated/{{ inventory_hostname }}.txt"
+        mode: '0644'
+      delegate_to: localhost
