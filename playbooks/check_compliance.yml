@@ -1,4 +1,18 @@
 ---
+# Compliance audit across the estate.
+#
+# Every individual check carries `ignore_errors: true` on purpose: the point
+# of an audit is to see all the findings, not to stop at the first one. The
+# cost is that ignored errors do not set an exit code, so until PLAY 5 this
+# playbook reported failures on screen and still exited 0 — which means cron,
+# CI, or anything else driving it read the run as a pass.
+#
+# So each play records its own failures as a host fact, and PLAY 5 collects
+# them on localhost and fails once, at the end, with the whole list. Doing it
+# at the end rather than per-play also means a device that fails the baseline
+# still gets its access / distribution / core checks run instead of being
+# dropped from the remaining plays.
+
 # ============================================================
 # PLAY 1 — baseline security, applies to every IOS device
 # ============================================================
@@ -55,11 +69,26 @@
     - name: Baseline result
       ansible.builtin.debug:
         msg:
-          - "NTP           {{ 'FAIL' if c_ntp.failed    else 'pass' }}"
+          - "NTP           {{ 'FAIL' if c_ntp.failed else 'pass' }}"
           - "Telnet off    {{ 'FAIL' if c_telnet.failed else 'pass' }}"
           - "Enable secret {{ 'FAIL' if c_secret.failed else 'pass' }}"
-          - "Pwd encrypt   {{ 'FAIL' if c_pwenc.failed  else 'pass' }}"
-          - "SSH v2        {{ 'FAIL' if c_ssh.failed    else 'pass' }}"
+          - "Pwd encrypt   {{ 'FAIL' if c_pwenc.failed else 'pass' }}"
+          - "SSH v2        {{ 'FAIL' if c_ssh.failed else 'pass' }}"
+
+    - name: Record baseline failures
+      ansible.builtin.set_fact:
+        compliance_failures: >-
+          {{ (compliance_failures | default([]))
+             + ([inventory_hostname ~ ': no ntp server configured']
+                if c_ntp.failed else [])
+             + ([inventory_hostname ~ ': telnet allowed on vty']
+                if c_telnet.failed else [])
+             + ([inventory_hostname ~ ': no enable secret']
+                if c_secret.failed else [])
+             + ([inventory_hostname ~ ': service password-encryption missing']
+                if c_pwenc.failed else [])
+             + ([inventory_hostname ~ ': ssh version 2 not enforced']
+                if c_ssh.failed else []) }}
 
 # ============================================================
 # PLAY 2 — access layer only
@@ -102,8 +131,19 @@
       ansible.builtin.debug:
         msg:
           - "Port-security {{ 'FAIL' if c_portsec.failed else 'pass' }}"
-          - "BPDU guard    {{ 'FAIL' if c_bpdu.failed    else 'pass' }}"
-          - "DHCP snoop    {{ 'FAIL' if c_snoop.failed   else 'pass' }}"
+          - "BPDU guard    {{ 'FAIL' if c_bpdu.failed else 'pass' }}"
+          - "DHCP snoop    {{ 'FAIL' if c_snoop.failed else 'pass' }}"
+
+    - name: Record access layer failures
+      ansible.builtin.set_fact:
+        compliance_failures: >-
+          {{ (compliance_failures | default([]))
+             + ([inventory_hostname ~ ': no port-security on any interface']
+                if c_portsec.failed else [])
+             + ([inventory_hostname ~ ': no bpduguard configured']
+                if c_bpdu.failed else [])
+             + ([inventory_hostname ~ ': dhcp snooping not enabled']
+                if c_snoop.failed else []) }}
 
 # ============================================================
 # PLAY 3 — distribution layer only
@@ -124,14 +164,19 @@
     - name: MGMT-RESTRICT ACL exists with 3 deny rules
       ansible.builtin.assert:
         that: dist.stdout[0] | regex_findall('deny') | length == 3
-        fail_msg: "expected 3 deny rules, found {{ dist.stdout[0] | regex_findall('deny') | length }}"
+        fail_msg: >-
+          expected 3 deny rules, found
+          {{ dist.stdout[0] | regex_findall('deny') | length }}
       register: c_acl
       ignore_errors: true
 
     - name: ACL applied to 3 SVIs
       ansible.builtin.assert:
         that: dist.stdout[1] | regex_findall('access-group') | length == 3
-        fail_msg: "ACL applied to {{ dist.stdout[1] | regex_findall('access-group') | length }} interfaces, expected 3"
+        fail_msg: >-
+          ACL applied to
+          {{ dist.stdout[1] | regex_findall('access-group') | length }}
+          interfaces, expected 3
       register: c_aclapply
       ignore_errors: true
 
@@ -145,9 +190,20 @@
     - name: Distribution result
       ansible.builtin.debug:
         msg:
-          - "ACL rules     {{ 'FAIL' if c_acl.failed      else 'pass' }}"
+          - "ACL rules     {{ 'FAIL' if c_acl.failed else 'pass' }}"
           - "ACL applied   {{ 'FAIL' if c_aclapply.failed else 'pass' }}"
-          - "HSRP priority {{ 'FAIL' if c_hsrp.failed     else 'pass' }}"
+          - "HSRP priority {{ 'FAIL' if c_hsrp.failed else 'pass' }}"
+
+    - name: Record distribution layer failures
+      ansible.builtin.set_fact:
+        compliance_failures: >-
+          {{ (compliance_failures | default([]))
+             + ([inventory_hostname ~ ': MGMT-RESTRICT ACL does not have 3 deny rules']
+                if c_acl.failed else [])
+             + ([inventory_hostname ~ ': MGMT-RESTRICT not applied to 3 SVIs']
+                if c_aclapply.failed else [])
+             + ([inventory_hostname ~ ': not HSRP active for any vlan (no priority 110)']
+                if c_hsrp.failed else []) }}
 
 # ============================================================
 # PLAY 4 — core layer only
@@ -182,4 +238,63 @@
       ansible.builtin.debug:
         msg:
           - "OSPF running  {{ 'FAIL' if c_ospf.failed else 'pass' }}"
-          - "Neighbours    {{ 'FAIL' if c_nbr.failed  else 'pass' }}"
+          - "Neighbours    {{ 'FAIL' if c_nbr.failed else 'pass' }}"
+
+    - name: Record core layer failures
+      ansible.builtin.set_fact:
+        compliance_failures: >-
+          {{ (compliance_failures | default([]))
+             + ([inventory_hostname ~ ': no ospf process configured']
+                if c_ospf.failed else [])
+             + ([inventory_hostname ~ ': one or more ospf neighbours not FULL']
+                if c_nbr.failed else []) }}
+
+# ============================================================
+# PLAY 5 — verdict
+#
+# The only play that decides anything. Without it the four plays above print
+# FAIL and exit 0.
+#
+# A host that never reported is counted as a failure rather than skipped. An
+# unreachable device produces no `compliance_failures` fact, and treating
+# "no findings" as "compliant" is how a monitoring system reports a healthy
+# estate while half of it is off the network.
+#
+# Scope: the eight IOS devices. ASAV-0 has no checks in this playbook at all,
+# so it is deliberately not in `audited_hosts` — counting it would produce a
+# permanent false finding, and pretending it is audited would be worse. The
+# firewall being unaudited is a real gap; it is named in the README rather
+# than hidden here.
+# ============================================================
+- name: Compliance verdict
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    audited_hosts: "{{ groups['ios'] | default([]) }}"
+
+  tasks:
+    - name: Collect findings from every audited device
+      ansible.builtin.set_fact:
+        all_failures: >-
+          {{ (all_failures | default([]))
+             + (hostvars[item].compliance_failures
+                if hostvars[item].compliance_failures is defined
+                else [item ~ ': checks did not run (unreachable, or the play errored)']) }}
+      loop: "{{ audited_hosts }}"
+
+    - name: Findings
+      ansible.builtin.debug:
+        msg: "{{ all_failures | default(['none']) }}"
+
+    - name: Fail the run if anything is non-compliant
+      ansible.builtin.assert:
+        that:
+          - (all_failures | default([])) | length == 0
+        fail_msg: >-
+          {{ (all_failures | default([])) | length }} finding(s) across
+          {{ audited_hosts | length }} audited device(s). Listed above.
+        success_msg: >-
+          All checks passed on all {{ audited_hosts | length }} audited devices.
+        quiet: true

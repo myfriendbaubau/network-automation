@@ -64,10 +64,28 @@
 
     # ── Apply ─────────────────────────────────────────────────────────
 
+    - name: Ensure pre-change backup directory exists
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../backups-pre-change"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      changed_when: false
+
+    # Taking a backup is a read as far as the device is concerned. Left in
+    # the apply task via `backup: true` it sets changed=True on every run,
+    # which makes `changed=0` unreachable and fires the save task pointlessly.
+    - name: Back up running-config before any change
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: "{{ playbook_dir }}/../backups-pre-change"
+          filename: "{{ inventory_hostname }}.txt"
+      changed_when: false
+
     - name: Apply templated config
       cisco.ios.ios_config:
         src: "{{ playbook_dir }}/../templates/access_mgmt.j2"
-        backup: true
       register: cfg
 
     # ── Verify before persisting ──────────────────────────────────────
@@ -88,13 +106,13 @@
     - name: Save config only once reachability is confirmed
       cisco.ios.ios_config:
         save_when: always
-      when: cfg.changed
+      when: cfg.updates | default([]) | length > 0
 
     - name: Report
       ansible.builtin.debug:
         msg: >-
-          {{ inventory_hostname }}: {{ 'changed and saved' if cfg.changed
-          else 'already compliant' }}
+          {{ inventory_hostname }}: {{ 'changed and saved'
+          if cfg.updates | default([]) | length > 0 else 'already compliant' }}
 
 # ─────────────────────────────────────────────────────────────────────
 # NEXT LEVEL, not implemented here

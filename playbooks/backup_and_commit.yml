@@ -1,44 +1,124 @@
 ---
+# Back every device up, then version the result.
+#
+# This is what cron runs nightly. It went 25 days pushing nothing: two commits
+# made in the GitHub web UI diverged the branch, every `git push` was rejected
+# with "fetch first", and nothing looked at the result. The backups kept being
+# taken and committed locally, the log kept being written, and the repository
+# on GitHub simply stopped moving.
+#
+# Three changes came out of that:
+#   * a `git pull` before the push, so a diverged branch merges instead of
+#     rejecting;
+#   * the push no longer runs only when this run committed something — a
+#     commit stranded by an earlier failed push has to be able to leave;
+#   * an explicit check afterwards that nothing is still sitting local.
+#
+# The last one is the important one. The first two make the common failure go
+# away; only the third makes the next failure visible. Note what it still
+# cannot do: it fails the playbook, and the playbook writes to a log file. If
+# nobody reads the log, this is a louder version of the same silence.
+
 - name: Backup all device configs
   ansible.builtin.import_playbook: backup_configs.yml
 
-- name: Commit changes to Git
+- name: Commit and push backups
   hosts: localhost
   gather_facts: true
   connection: local
 
+  vars:
+    repo: "{{ playbook_dir }}/.."
+
   tasks:
-    - name: Stage backup files
+    # Every git task below carries `# noqa: command-instead-of-module`.
+    # ansible.builtin.git clones, checks out and fetches; it does not stage,
+    # commit or push. There is no module for what this play does, so the rule
+    # is silenced task by task rather than switched off repo-wide — a future
+    # task that really should use a module still gets flagged.
+    - name: Stage backup files  # noqa: command-instead-of-module
       ansible.builtin.command:
         cmd: git add backups/
-        chdir: "{{ playbook_dir }}/.."
+        chdir: "{{ repo }}"
       changed_when: false
 
-    - name: Check for staged changes
+    # `git diff --cached --quiet` exits 0 for "no staged changes" and 1 for
+    # "there are staged changes". Anything else — 128 for a broken repo, say —
+    # is a real error. Treating every non-zero rc as "there are changes" would
+    # send a broken repository on to the commit step.
+    - name: Check for staged changes  # noqa: command-instead-of-module
       ansible.builtin.command:
         cmd: git diff --cached --quiet
-        chdir: "{{ playbook_dir }}/.."
+        chdir: "{{ repo }}"
       register: git_status
-      failed_when: false
+      failed_when: git_status.rc not in [0, 1]
       changed_when: false
 
-    - name: Commit if changed
+    - name: Commit if changed  # noqa: command-instead-of-module
       ansible.builtin.command:
         cmd: git commit -m "Config backup {{ ansible_date_time.iso8601 }}"
-        chdir: "{{ playbook_dir }}/.."
-      when: git_status.rc != 0
+        chdir: "{{ repo }}"
+      when: git_status.rc == 1
+      changed_when: true
+
+    # Merge whatever arrived from elsewhere before pushing. A conflict here
+    # would otherwise leave the working tree half-merged and every subsequent
+    # nightly run would fail on the same wreckage, so back it out and stop.
+    - name: Sync with remote before pushing
+      block:
+        - name: Merge remote changes  # noqa: command-instead-of-module
+          ansible.builtin.command:
+            cmd: git pull --no-rebase --no-edit
+            chdir: "{{ repo }}"
+          register: git_pull
+          changed_when: "'Already up to date' not in git_pull.stdout"
+      rescue:
+        - name: Abort the half-finished merge  # noqa: command-instead-of-module
+          ansible.builtin.command:
+            cmd: git merge --abort
+            chdir: "{{ repo }}"
+          failed_when: false
+          changed_when: true
+
+        - name: Stop, and say why
+          ansible.builtin.fail:
+            msg: >-
+              git pull failed and the merge has been aborted, so the working
+              tree is back where it started. Nothing was pushed. Resolve this
+              by hand in {{ repo }}. stderr was:
+              {{ git_pull.stderr | default('(no stderr captured)') }}
+
+    # Deliberately unconditional. The old `when: git_status.rc != 0` meant a
+    # commit that failed to push on Monday would not be retried on Tuesday
+    # unless Tuesday also had something new to commit.
+    - name: Push to GitHub  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: git push
+        chdir: "{{ repo }}"
+      register: git_push
+      changed_when: "'Everything up-to-date' not in git_push.stderr"
+
+    # Verify rather than assume. `git push` returning 0 is not the same claim
+    # as "the remote has my commits".
+    - name: Count commits still only on this machine  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: git rev-list --count @{u}..HEAD
+        chdir: "{{ repo }}"
+      register: git_ahead
+      changed_when: false
+
+    - name: Fail if anything did not reach GitHub
+      ansible.builtin.fail:
+        msg: >-
+          {{ git_ahead.stdout }} commit(s) are still local after the push.
+          The backups on GitHub are out of date. This is exactly the failure
+          that ran unnoticed for 25 days — do not ignore it.
+      when: git_ahead.stdout | int > 0
 
     - name: Report
       ansible.builtin.debug:
-        msg: "Backup complete"
-    - name: Sync with remote before pushing
-      ansible.builtin.command:
-        cmd: git pull --no-rebase --no-edit
-        chdir: "{{ playbook_dir }}/.."
-      register: git_pull
-      changed_when: "'Already up to date' not in git_pull.stdout"
-    - name: Push to GitHub
-      ansible.builtin.command:
-        cmd: git push
-        chdir: "{{ playbook_dir }}/.."
-      when: git_status.rc != 0
+        msg: >-
+          Backup complete.
+          {{ 'Committed and pushed.' if git_status.rc == 1
+             else 'No config changes to commit.' }}
+          Local and origin are in sync.

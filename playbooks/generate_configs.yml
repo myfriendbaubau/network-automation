@@ -1,12 +1,30 @@
 ---
+# Render the access switch template to files without touching a device.
+# Useful as a diff target and as a way to review what deploy_configs.yml
+# would push.
+#
+# generated/ is gitignored, so it does not exist in a fresh clone and the
+# template module will not create it — hence the explicit directory task.
+
 - name: Generate access switch configs
   hosts: access
   gather_facts: false
 
+  vars:
+    output_dir: "{{ playbook_dir }}/../generated"
+
   tasks:
-    - name: Render template to file
+    - name: Ensure the output directory exists
+      ansible.builtin.file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Render template to file  # noqa: no-relative-paths
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/access_mgmt.j2"
-        dest: "{{ playbook_dir }}/../generated/{{ inventory_hostname }}.txt"
+        dest: "{{ output_dir }}/{{ inventory_hostname }}.txt"
         mode: '0644'
       delegate_to: localhost

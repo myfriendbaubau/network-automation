@@ -1,0 +1,37 @@
+---
+extends: default
+
+ignore: |
+  backups/
+  generated/
+  inventory/group_vars/all/vault.yml
+
+rules:
+  line-length:
+    max: 100
+
+  # This repo is edited on Windows with core.autocrlf=true and run on Linux.
+  # Git stores LF in both cases, so the newline character is a property of the
+  # checkout rather than of the repository, and flagging it just means the
+  # lint result depends on which machine you run it from.
+  new-lines: disable
+
+  # GitHub Actions spells its trigger key `on:`, which YAML 1.1 reads as the
+  # boolean true. Quoting it would satisfy the linter and confuse everyone
+  # else, so the rule is dropped for that directory only.
+  truthy:
+    ignore: |
+      .github/workflows/
+
+  # Everything below matches what ansible-lint requires of a custom yamllint
+  # config. Without these it prints "Found incompatible custom yamllint
+  # configuration" and turns off its fix mode. `ansible-lint --nocolor` and
+  # `yamllint .` should agree with each other, not argue.
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true

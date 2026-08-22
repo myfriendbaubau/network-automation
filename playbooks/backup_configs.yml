@@ -1,7 +1,26 @@
 ---
+# Pull running-configs off every device, strip credential material, and leave
+# the result in backups/ for backup_and_commit.yml to version.
+#
+# The order matters and it is not ideal: the full config is written to disk
+# first and scrubbed second, so there is a brief window where the unredacted
+# file exists. Mode 0600 narrows that window to the controller's own user; it
+# does not close it. Scrubbing in memory before the write would, and is the
+# obvious next change.
+#
+# any_errors_fatal stops the whole run — including the commit play that
+# imports this one — the moment a scrub check fails. Without it a device whose
+# config held a credential shape the scrub loop does not know about would
+# still be committed and pushed.
+
 - name: Backup IOS running-configs
   hosts: ios
   gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    backup_file: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+
   tasks:
     - name: Retrieve running-config
       cisco.ios.ios_command:
@@ -11,27 +30,60 @@
     - name: Write to backups/
       ansible.builtin.copy:
         content: "{{ config.stdout[0] }}\n"
-        dest: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
-        mode: '0644'
+        dest: "{{ backup_file }}"
+        mode: '0600'
       delegate_to: localhost
 
+    # Everything the pattern should keep goes in group 1; everything after it
+    # is replaced. The `(?: \d)?` on the password patterns is what stops a
+    # type-7 hash surviving: without it, `enable password 7 0822455D0A16`
+    # matches only as far as the `7`, and the hex is left on the line.
     - name: Scrub credential hashes
       ansible.builtin.replace:
-        path: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+        path: "{{ backup_file }}"
         regexp: "{{ item }}"
         replace: '\1 <REDACTED>'
       loop:
-        - '(enable secret \d) \S+'
-        - '(enable password) \S+'
-        - '(username \S+ (?:privilege \d+ )?secret \d) \S+'
-        - '(username \S+ password) \S+'
-        - '(key-string) \S+'
+        - '(enable secret(?: \d)?) \S+'
+        - '(enable password(?: \d)?) \S+'
+        - '(username \S+ (?:privilege \d+ )?secret(?: \d)?) \S+'
+        - '(username \S+ password(?: \d)?) \S+'
+        - '(key-string(?: \d)?) \S+'
         - '(pre-shared-key) \S+'
+        - '(snmp-server community) \S+'
+      delegate_to: localhost
+
+    # The backstop for shapes the loop above does not know about. It matches
+    # on the form of the secret rather than the keyword in front of it, so a
+    # credential under a command nobody thought to add a pattern for still
+    # stops the run. `\b7\s+<hex>` catches type-7 wherever it appears —
+    # including `ip ospf message-digest-key 1 md5 7 ...`, which none of the
+    # patterns above would touch. Checked against all eight real backups,
+    # certificate chains included, with no false positives.
+    - name: Verify nothing secret-shaped survived the scrub
+      ansible.builtin.assert:
+        that:
+          - backup_text is not search('\$\d\$')
+          - backup_text is not search('(?i)\b7\s+[0-9A-Fa-f]{10,}\b')
+          - backup_text is not search('pre-shared-key (?!<REDACTED>)')
+        fail_msg: >-
+          {{ inventory_hostname }}: credential material survived the scrub in
+          backups/{{ inventory_hostname }}.txt. The run is stopping before
+          anything is committed. Add a pattern to the scrub loop above,
+          re-run, and check the file by hand before pushing.
+        quiet: true
+      vars:
+        backup_text: "{{ lookup('ansible.builtin.file', backup_file) }}"
       delegate_to: localhost
 
 - name: Backup ASA running-config
   hosts: asa
   gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    backup_file: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+
   tasks:
     - name: Retrieve running-config
       cisco.asa.asa_command:
@@ -41,18 +93,43 @@
     - name: Write to backups/
       ansible.builtin.copy:
         content: "{{ config.stdout[0] }}\n"
-        dest: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
-        mode: '0644'
+        dest: "{{ backup_file }}"
+        mode: '0600'
       delegate_to: localhost
 
-    - name: Scrub credential hashes
+    # The last three are not secrets. They are the chassis serial, the VPN
+    # peer address and the tunnel-group keyed on that address — identifiers,
+    # not credentials, and the ones here belong to a lab and a torn-down AWS
+    # endpoint. They are scrubbed so the redaction covers every class of thing
+    # it claims to cover, which is a consistency argument rather than a risk
+    # one, and worth being clear about.
+    - name: Scrub credential hashes and device identifiers
       ansible.builtin.replace:
-        path: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+        path: "{{ backup_file }}"
         regexp: "{{ item }}"
         replace: '\1 <REDACTED>'
       loop:
-        - '(enable password) \S+'
-        - '(username \S+ password) \S+'
-        - '(passwd) \S+'
+        - '(enable password(?: \d)?) \S+'
+        - '(username \S+ password(?: \d)?) \S+'
+        - '(passwd(?: \d)?) \S+'
         - '(pre-shared-key) \S+'
+        - '(: Serial Number:) \S+'
+        - '(set peer) \S+'
+        - '(tunnel-group) \d+\.\d+\.\d+\.\d+'
+      delegate_to: localhost
+
+    - name: Verify nothing secret-shaped survived the scrub
+      ansible.builtin.assert:
+        that:
+          - backup_text is not search('\$\d\$')
+          - backup_text is not search('pre-shared-key (?!<REDACTED>)')
+          - backup_text is not search('Serial Number: (?!<REDACTED>)')
+        fail_msg: >-
+          {{ inventory_hostname }}: credential material survived the scrub in
+          backups/{{ inventory_hostname }}.txt. The run is stopping before
+          anything is committed. Add a pattern to the scrub loop above,
+          re-run, and check the file by hand before pushing.
+        quiet: true
+      vars:
+        backup_text: "{{ lookup('ansible.builtin.file', backup_file) }}"
       delegate_to: localhost

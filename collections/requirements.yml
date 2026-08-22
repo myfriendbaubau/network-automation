@@ -1,0 +1,24 @@
+---
+# Galaxy collections this repository needs.
+#
+#   ansible-galaxy collection install -r collections/requirements.yml
+#
+# cisco.asa is the reason this file has to exist. `pip install ansible` ships
+# the batteries-included bundle and cisco.ios comes with it — cisco.asa does
+# not. A freshly built controller therefore runs every IOS playbook fine and
+# fails only on the ASA play in backup_configs.yml, which is an annoying way
+# to find out about a missing dependency at 02:00 from cron.
+#
+# No versions are pinned. That is a deliberate but temporary choice: pinning
+# to numbers guessed rather than measured is worse than not pinning. To pin
+# these properly, run
+#
+#   ansible-galaxy collection list | grep -E 'cisco\.(ios|asa)|netcommon'
+#
+# on the controller that actually runs these playbooks and paste the versions
+# in as `version: "x.y.z"`.
+
+collections:
+  - name: cisco.ios
+  - name: cisco.asa
+  - name: ansible.netcommon
