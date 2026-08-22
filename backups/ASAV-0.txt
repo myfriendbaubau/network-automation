@@ -1,7 +1,7 @@
 : Saved
 
 : 
-: Serial Number: 9AGWJC8PFPN
+: Serial Number: <REDACTED>
 : Hardware:   ASAv, 2048 MB RAM, CPU Pentium II 3686 MHz
 :
 ASA Version 9.23(1) 
@@ -95,7 +95,7 @@ crypto ipsec ikev2 ipsec-proposal AWS-PROPOSAL
  protocol esp integrity sha-256
 crypto ipsec security-association pmtu-aging infinite
 crypto map OUTSIDE-MAP 10 match address VPN-TO-AWS
-crypto map OUTSIDE-MAP 10 set peer 13.62.226.44 
+crypto map OUTSIDE-MAP 10 set peer <REDACTED> 
 crypto map OUTSIDE-MAP 10 set ikev2 ipsec-proposal AWS-PROPOSAL
 crypto map OUTSIDE-MAP interface outside
 crypto ca trustpoint _SmartCallHome_ServerCA
@@ -223,8 +223,8 @@ ntp server 216.239.35.0
 ntp server 162.159.200.123
 dynamic-access-policy-record DfltAccessPolicy
 username cisco password <REDACTED> pbkdf2 privilege 15
-tunnel-group 13.62.226.44 type ipsec-l2l
-tunnel-group 13.62.226.44 ipsec-attributes
+tunnel-group <REDACTED> type ipsec-l2l
+tunnel-group <REDACTED> ipsec-attributes
  ikev2 remote-authentication pre-shared-key <REDACTED>
  ikev2 local-authentication pre-shared-key <REDACTED>
 !
