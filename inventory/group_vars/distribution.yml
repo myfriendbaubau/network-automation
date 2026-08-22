@@ -1,0 +1,15 @@
+---
+mgmt_acl_rules:
+  - 10 deny ip 10.0.10.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
+  - 20 deny ip 10.0.20.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
+  - 30 deny ip 10.0.40.0 0.0.0.255 10.0.30.0 0.0.0.255 log-input
+  - 40 permit ip any any
+
+mgmt_acl_interfaces:
+  - Vlan10
+  - Vlan20
+  - Vlan40
+
+expected_hsrp_active_groups:
+  DIST1: ["1", "3"]
+  DIST2: ["2", "4"]

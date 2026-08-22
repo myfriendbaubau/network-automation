@@ -7,5 +7,5 @@ generated/
 # Pre-change backups from deploy_configs.yml. These are raw running-configs
 # taken straight off the device — no scrub step runs on them, so they contain
 # live enable secrets, username hashes and key material. Committing them would
-# put back exactly what the history rewrite took out.
+# publish raw credential material.
 backups-pre-change/

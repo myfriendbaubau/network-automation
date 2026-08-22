@@ -20,3 +20,11 @@ mgmt_svi:
     name: SERVERS
     ip: 10.0.40.4
     gateway: 10.0.40.1
+
+# Ports intended for endpoints. Compliance evaluates every listed interface;
+# a single protected port is not enough to mark the switch compliant.
+host_facing_ports:
+  ACC1: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
+  ACC2: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
+  ACC3: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
+  ACC4: [Ethernet1/0, Ethernet1/1, Ethernet1/2]

@@ -1,3 +1,7 @@
 ---
 ansible_user: "{{ vault_device_user }}"
 ansible_password: "{{ vault_device_password }}"
+
+expected_ntp_servers:
+  - 216.239.35.0
+  - 162.159.200.123

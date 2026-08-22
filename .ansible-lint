@@ -1,11 +1,9 @@
 ---
 # ansible-lint configuration.
 #
-# Nothing is skipped globally. The two rules this repo legitimately breaks —
-# command-instead-of-module for the git tasks in backup_and_commit.yml, and
-# no-relative-paths for the template render in generate_configs.yml — are
-# silenced with inline `# noqa` on the individual tasks, so the rules stay
-# live for everything else.
+# Nothing is skipped globally. Legitimate exceptions — Git CLI operations,
+# the cross-directory template render, and the final run-once compliance
+# aggregation — are silenced inline, so the rules stay live everywhere else.
 
 exclude_paths:
   # Device output, not source. Committed on purpose as backup history.

@@ -16,9 +16,9 @@ rules:
   # lint result depends on which machine you run it from.
   new-lines: disable
 
-  # GitHub Actions spells its trigger key `on:`, which YAML 1.1 reads as the
-  # boolean true. Quoting it would satisfy the linter and confuse everyone
-  # else, so the rule is dropped for that directory only.
+  # GitHub Actions uses a key named `on`. It is quoted in the workflow because
+  # YAML 1.1 otherwise treats it as a boolean; keep the directory exception for
+  # compatibility with generated or third-party workflow files.
   truthy:
     ignore: |
       .github/workflows/

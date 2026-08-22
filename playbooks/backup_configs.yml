@@ -1,135 +1,155 @@
 ---
-# Pull running-configs off every device, strip credential material, and leave
-# the result in backups/ for backup_and_commit.yml to version.
-#
-# The order matters and it is not ideal: the full config is written to disk
-# first and scrubbed second, so there is a brief window where the unredacted
-# file exists. Mode 0600 narrows that window to the controller's own user; it
-# does not close it. Scrubbing in memory before the write would, and is the
-# obvious next change.
-#
-# any_errors_fatal stops the whole run — including the commit play that
-# imports this one — the moment a scrub check fails. Without it a device whose
-# config held a credential shape the scrub loop does not know about would
-# still be committed and pushed.
+# Pull every running configuration, redact it in controller memory, validate
+# the sanitized result, and only then write a file that Git is allowed to see.
+# Raw module output and intermediate facts use no_log so verbosity cannot print
+# credential material into cron or CI logs.
 
-- name: Backup IOS running-configs
+- name: Backup IOS running configurations
   hosts: ios
   gather_facts: false
   any_errors_fatal: true
 
   vars:
     backup_file: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+    ios_scrub_patterns:
+      - '(enable secret(?: \d)?) \S+'
+      - '(enable password(?: \d)?) \S+'
+      - '(username \S+ (?:privilege \d+ )?secret(?: \d)?) \S+'
+      - '(username \S+ password(?: \d)?) \S+'
+      - '(key-string(?: \d)?) \S+'
+      - '(pre-shared-key) \S+'
+      - '(snmp-server community) \S+'
 
   tasks:
-    - name: Retrieve running-config
+    - name: Retrieve IOS running configuration
       cisco.ios.ios_command:
-        commands: show running-config
+        commands:
+          - show running-config
       register: config
+      no_log: true
 
-    - name: Write to backups/
+    - name: Initialise the in-memory IOS backup
+      ansible.builtin.set_fact:
+        sanitized_config: "{{ config.stdout[0] }}"
+      no_log: true
+
+    - name: Redact IOS credential material in memory
+      ansible.builtin.set_fact:
+        sanitized_config: >-
+          {{ sanitized_config
+             | regex_replace(item, '\\1 <REDACTED>', multiline=true) }}
+      loop: "{{ ios_scrub_patterns }}"
+      no_log: true
+
+    - name: Verify the IOS backup is safe to write
+      ansible.builtin.assert:
+        that:
+          - sanitized_config is not search('\$\d\$')
+          - sanitized_config is not search('(?i)\b7\s+[0-9A-Fa-f]{10,}\b')
+          - >-
+            sanitized_config is not search(
+            '(?im)^enable (?:secret|password)(?: \d+)? (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?im)^username \S+ .*?(?:secret|password)(?: \d+)? '
+            '(?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?i)pre-shared-key (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?im)^snmp-server community (?!<REDACTED>)\S+'
+            )
+        fail_msg: >-
+          {{ inventory_hostname }}: credential material survived in-memory
+          redaction. Nothing was written or committed.
+        quiet: true
+      no_log: true
+
+    - name: Write the sanitized IOS backup
       ansible.builtin.copy:
-        content: "{{ config.stdout[0] }}\n"
+        content: "{{ sanitized_config }}\n"
         dest: "{{ backup_file }}"
         mode: '0600'
       delegate_to: localhost
 
-    # Everything the pattern should keep goes in group 1; everything after it
-    # is replaced. The `(?: \d)?` on the password patterns is what stops a
-    # type-7 hash surviving: without it, `enable password 7 0822455D0A16`
-    # matches only as far as the `7`, and the hex is left on the line.
-    - name: Scrub credential hashes
-      ansible.builtin.replace:
-        path: "{{ backup_file }}"
-        regexp: "{{ item }}"
-        replace: '\1 <REDACTED>'
-      loop:
-        - '(enable secret(?: \d)?) \S+'
-        - '(enable password(?: \d)?) \S+'
-        - '(username \S+ (?:privilege \d+ )?secret(?: \d)?) \S+'
-        - '(username \S+ password(?: \d)?) \S+'
-        - '(key-string(?: \d)?) \S+'
-        - '(pre-shared-key) \S+'
-        - '(snmp-server community) \S+'
-      delegate_to: localhost
-
-    # The backstop for shapes the loop above does not know about. It matches
-    # on the form of the secret rather than the keyword in front of it, so a
-    # credential under a command nobody thought to add a pattern for still
-    # stops the run. `\b7\s+<hex>` catches type-7 wherever it appears —
-    # including `ip ospf message-digest-key 1 md5 7 ...`, which none of the
-    # patterns above would touch. Checked against all eight real backups,
-    # certificate chains included, with no false positives.
-    - name: Verify nothing secret-shaped survived the scrub
-      ansible.builtin.assert:
-        that:
-          - backup_text is not search('\$\d\$')
-          - backup_text is not search('(?i)\b7\s+[0-9A-Fa-f]{10,}\b')
-          - backup_text is not search('pre-shared-key (?!<REDACTED>)')
-        fail_msg: >-
-          {{ inventory_hostname }}: credential material survived the scrub in
-          backups/{{ inventory_hostname }}.txt. The run is stopping before
-          anything is committed. Add a pattern to the scrub loop above,
-          re-run, and check the file by hand before pushing.
-        quiet: true
-      vars:
-        backup_text: "{{ lookup('ansible.builtin.file', backup_file) }}"
-      delegate_to: localhost
-
-- name: Backup ASA running-config
+- name: Backup ASA running configuration
   hosts: asa
   gather_facts: false
   any_errors_fatal: true
 
   vars:
     backup_file: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+    asa_scrub_patterns:
+      - '(enable password(?: \d)?) \S+'
+      - '(username \S+ password(?: \d)?) \S+'
+      - '(passwd(?: \d)?) \S+'
+      - '(pre-shared-key) \S+'
+      - '(: Serial Number:) \S+'
+      - '(set peer) \S+'
+      - '(tunnel-group) \d+\.\d+\.\d+\.\d+'
 
   tasks:
-    - name: Retrieve running-config
+    - name: Retrieve ASA running configuration
       cisco.asa.asa_command:
-        commands: show running-config
+        commands:
+          - show running-config
       register: config
+      no_log: true
 
-    - name: Write to backups/
-      ansible.builtin.copy:
-        content: "{{ config.stdout[0] }}\n"
-        dest: "{{ backup_file }}"
-        mode: '0600'
-      delegate_to: localhost
+    - name: Initialise the in-memory ASA backup
+      ansible.builtin.set_fact:
+        sanitized_config: "{{ config.stdout[0] }}"
+      no_log: true
 
-    # The last three are not secrets. They are the chassis serial, the VPN
-    # peer address and the tunnel-group keyed on that address — identifiers,
-    # not credentials, and the ones here belong to a lab and a torn-down AWS
-    # endpoint. They are scrubbed so the redaction covers every class of thing
-    # it claims to cover, which is a consistency argument rather than a risk
-    # one, and worth being clear about.
-    - name: Scrub credential hashes and device identifiers
-      ansible.builtin.replace:
-        path: "{{ backup_file }}"
-        regexp: "{{ item }}"
-        replace: '\1 <REDACTED>'
-      loop:
-        - '(enable password(?: \d)?) \S+'
-        - '(username \S+ password(?: \d)?) \S+'
-        - '(passwd(?: \d)?) \S+'
-        - '(pre-shared-key) \S+'
-        - '(: Serial Number:) \S+'
-        - '(set peer) \S+'
-        - '(tunnel-group) \d+\.\d+\.\d+\.\d+'
-      delegate_to: localhost
+    - name: Redact ASA credentials and identifiers in memory
+      ansible.builtin.set_fact:
+        sanitized_config: >-
+          {{ sanitized_config
+             | regex_replace(item, '\\1 <REDACTED>', multiline=true) }}
+      loop: "{{ asa_scrub_patterns }}"
+      no_log: true
 
-    - name: Verify nothing secret-shaped survived the scrub
+    - name: Verify the ASA backup is safe to write
       ansible.builtin.assert:
         that:
-          - backup_text is not search('\$\d\$')
-          - backup_text is not search('pre-shared-key (?!<REDACTED>)')
-          - backup_text is not search('Serial Number: (?!<REDACTED>)')
+          - sanitized_config is not search('\$\d\$')
+          - >-
+            sanitized_config is not search(
+            '(?im)^enable password(?: \d+)? (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?im)^username \S+ password(?: \d+)? (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?i)pre-shared-key (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?im)^: Serial Number: (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?i)set peer (?!<REDACTED>)\S+'
+            )
+          - >-
+            sanitized_config is not search(
+            '(?im)^tunnel-group (?!<REDACTED>)\d+\.\d+\.\d+\.\d+'
+            )
         fail_msg: >-
-          {{ inventory_hostname }}: credential material survived the scrub in
-          backups/{{ inventory_hostname }}.txt. The run is stopping before
-          anything is committed. Add a pattern to the scrub loop above,
-          re-run, and check the file by hand before pushing.
+          {{ inventory_hostname }}: credential or identifier material survived
+          in-memory redaction. Nothing was written or committed.
         quiet: true
-      vars:
-        backup_text: "{{ lookup('ansible.builtin.file', backup_file) }}"
+      no_log: true
+
+    - name: Write the sanitized ASA backup
+      ansible.builtin.copy:
+        content: "{{ sanitized_config }}\n"
+        dest: "{{ backup_file }}"
+        mode: '0600'
       delegate_to: localhost

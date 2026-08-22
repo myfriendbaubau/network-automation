@@ -1,15 +1,15 @@
 ---
 # Back every device up, then version the result.
 #
-# This is what cron runs nightly. It went 25 days pushing nothing: two commits
-# made in the GitHub web UI diverged the branch, every `git push` was rejected
-# with "fetch first", and nothing looked at the result. The backups kept being
-# taken and committed locally, the log kept being written, and the repository
-# on GitHub simply stopped moving.
+# This is what the locked hourly cron wrapper runs. It once went 25 days
+# pushing nothing: two commits made in the GitHub web UI diverged the branch,
+# every `git push` was rejected with "fetch first", and nothing looked at the
+# result. The backups kept being taken and committed locally, the log kept
+# being written, and the repository on GitHub simply stopped moving.
 #
 # Three changes came out of that:
-#   * a `git pull` before the push, so a diverged branch merges instead of
-#     rejecting;
+#   * a rebase before the push, so remote edits are integrated without creating
+#     unattended merge commits;
 #   * the push no longer runs only when this run committed something — a
 #     commit stranded by an earlier failed push has to be able to leave;
 #   * an explicit check afterwards that nothing is still sitting local.
@@ -61,21 +61,21 @@
       when: git_status.rc == 1
       changed_when: true
 
-    # Merge whatever arrived from elsewhere before pushing. A conflict here
-    # would otherwise leave the working tree half-merged and every subsequent
-    # nightly run would fail on the same wreckage, so back it out and stop.
+    # Rebase onto whatever arrived from elsewhere before pushing. A conflict
+    # would otherwise leave the working tree half-rebased and every subsequent
+    # hourly run would fail on the same wreckage, so back it out and stop.
     - name: Sync with remote before pushing
       block:
-        - name: Merge remote changes  # noqa: command-instead-of-module
+        - name: Rebase onto remote changes  # noqa: command-instead-of-module
           ansible.builtin.command:
-            cmd: git pull --no-rebase --no-edit
+            cmd: git pull --rebase
             chdir: "{{ repo }}"
           register: git_pull
           changed_when: "'Already up to date' not in git_pull.stdout"
       rescue:
-        - name: Abort the half-finished merge  # noqa: command-instead-of-module
+        - name: Abort the half-finished rebase  # noqa: command-instead-of-module
           ansible.builtin.command:
-            cmd: git merge --abort
+            cmd: git rebase --abort
             chdir: "{{ repo }}"
           failed_when: false
           changed_when: true
@@ -83,9 +83,9 @@
         - name: Stop, and say why
           ansible.builtin.fail:
             msg: >-
-              git pull failed and the merge has been aborted, so the working
-              tree is back where it started. Nothing was pushed. Resolve this
-              by hand in {{ repo }}. stderr was:
+              git pull --rebase failed and the rebase has been aborted, so the
+              working tree is back where it started. Nothing was pushed.
+              Resolve this by hand in {{ repo }}. stderr was:
               {{ git_pull.stderr | default('(no stderr captured)') }}
 
     # Deliberately unconditional. The old `when: git_status.rc != 0` meant a

@@ -1,0 +1,4 @@
+---
+expected_ospf_neighbors:
+  CORE1: 3
+  CORE2: 3

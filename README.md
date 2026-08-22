@@ -4,6 +4,10 @@
 
 Config-as-code for the 3-tier lab. An Ansible controller inside the fabric manages all nine devices over SSH, backs up their configs to Git, detects drift, verifies compliance, and generates device configuration from templates.
 
+> **Scope:** this is an isolated Cisco CML home lab. Device credentials, VPN
+> peers and public-looking loopback addresses are disposable lab data and are
+> never reused on a production or personal network.
+
 Builds on the management network described in [`management-network.md`](./management-network.md).
 The network itself is documented here:
 https://github.com/myfriendbaubau/3-Tier-Enterprise-Network-Lab
@@ -25,6 +29,11 @@ https://github.com/myfriendbaubau/3-Tier-Enterprise-Network-Lab
 Controller: Ubuntu 24.04, `10.0.50.10`, attached to CORE1 `Gi7`.
 Managed devices: CORE1, CORE2, DIST1, DIST2, ACC1–4 (`cisco.ios`), asav-0 (`cisco.asa`).
 
+The backup files intentionally mirror the current CML devices; they are not
+hand-edited to make the lab look clean. Device-side findings visible in those
+snapshots and their correction commands are tracked in
+[`device-remediation.md`](./device-remediation.md).
+
 Three capabilities, three different questions:
 
 | Playbook | Question it answers |
@@ -40,11 +49,13 @@ Three capabilities, three different questions:
 ```
 network-automation/
 ├── ansible.cfg
+├── requirements.txt              # pinned controller and lint tooling
+├── device-remediation.md         # device-side findings visible in backups
 ├── .ansible-lint                 # exclusions only; no rules skipped globally
 ├── .yamllint
 ├── .github/workflows/lint.yml    # yamllint --strict + ansible-lint on push
 ├── collections/
-│   └── requirements.yml          # cisco.asa is NOT in the ansible bundle
+│   └── requirements.yml          # pinned Cisco network collections
 ├── inventory/
 │   ├── hosts.yml
 │   └── group_vars/
@@ -53,7 +64,9 @@ network-automation/
 │       │   └── vault.yml         # ansible-vault encrypted, git-ignored
 │       ├── ios.yml
 │       ├── asa.yml
-│       └── access.yml            # data model for templated config
+│       ├── access.yml            # management and host-facing-port intent
+│       ├── distribution.yml      # ACL and HSRP intent
+│       └── core.yml              # expected OSPF neighbour counts
 ├── playbooks/
 │   ├── gather_facts.yml
 │   ├── backup_configs.yml
@@ -62,6 +75,10 @@ network-automation/
 │   ├── generate_configs.yml
 │   ├── deploy_configs.yml
 │   └── configure_ntp.yml
+├── scripts/
+│   └── run_backup.sh             # flock-protected scheduled entry point
+├── tests/
+│   └── test_backup_redaction.py  # executable scrubber regression cases
 ├── templates/
 │   └── access_mgmt.j2            # Jinja2 config template
 ├── generated/                    # rendered config, for review — gitignored
@@ -72,16 +89,15 @@ network-automation/
 Setting up a controller from a clean checkout:
 
 ```bash
-pip install ansible-core ansible-lint yamllint
+python3 -m pip install -r requirements.txt
 ansible-galaxy collection install -r collections/requirements.yml
 echo 'your-vault-password' > ~/.vault_pass && chmod 600 ~/.vault_pass
-yamllint --strict . && ansible-lint          # same two commands CI runs
+yamllint --strict . && ansible-lint --profile production
 ```
 
-The collections file exists because `pip install ansible` — the batteries-included
-bundle — ships `cisco.ios` but **not** `cisco.asa`. Skip it and every IOS playbook
-runs fine while `backup_configs.yml` fails on the single ASA play, which is an
-irritating way to discover a missing dependency from cron at 02:00.
+The collections file is explicit because the controller installs `ansible-core`
+rather than the batteries-included `ansible` package. That keeps the declared
+local and CI module versions aligned.
 
 Inventory groups mirror the topology — `core`, `distribution`, `access` under `ios`, plus `asa` — so playbooks can target a layer without editing inventory:
 
@@ -111,23 +127,18 @@ The vault password is read from `~/.vault_pass`, deliberately outside the projec
 
 ## 4. Credential scrubbing
 
-`backup_configs.yml` strips secrets from every backup before it is written to Git:
+`backup_configs.yml` redacts each running configuration in controller memory.
+The raw module result and intermediate facts use `no_log`; only the validated,
+sanitized value is written to disk:
 
 ```yaml
-- name: Scrub credential hashes
-  ansible.builtin.replace:
-    path: "{{ backup_file }}"
-    regexp: "{{ item }}"
-    replace: '\1 <REDACTED>'
-  loop:
-    - '(enable secret(?: \d)?) \S+'
-    - '(enable password(?: \d)?) \S+'
-    - '(username \S+ (?:privilege \d+ )?secret(?: \d)?) \S+'
-    - '(username \S+ password(?: \d)?) \S+'
-    - '(key-string(?: \d)?) \S+'
-    - '(pre-shared-key) \S+'
-    - '(snmp-server community) \S+'
-  delegate_to: localhost
+- name: Redact IOS credential material in memory
+  ansible.builtin.set_fact:
+    sanitized_config: >-
+      {{ sanitized_config
+         | regex_replace(item, '\\1 <REDACTED>', multiline=true) }}
+  loop: "{{ ios_scrub_patterns }}"
+  no_log: true
 ```
 
 Everything to keep goes in group 1; everything after it is replaced. The
@@ -137,26 +148,27 @@ Everything to keep goes in group 1; everything after it is replaced. The
 on the end of the line. No device here currently uses type-7, so nothing leaked;
 it was a trap set for the first person to turn on a type-7 password.
 
-That near miss is the argument for the second half, which matters more than the
-patterns:
+The second half validates the in-memory result before the copy task can create a
+file:
 
 ```yaml
-- name: Verify nothing secret-shaped survived the scrub
+- name: Verify the IOS backup is safe to write
   ansible.builtin.assert:
     that:
-      - backup_text is not search('\$\d\$')
-      - backup_text is not search('(?i)\b7\s+[0-9A-Fa-f]{10,}\b')
-      - backup_text is not search('pre-shared-key (?!<REDACTED>)')
+      - sanitized_config is not search('\$\d\$')
+      - sanitized_config is not search('(?i)\b7\s+[0-9A-Fa-f]{10,}\b')
+      - sanitized_config is not search('pre-shared-key (?!<REDACTED>)')
+  no_log: true
 ```
 
 The loop is an allowlist: it removes the credential shapes somebody thought of.
 The assert is a denylist on *form* rather than keyword, so a secret under a
 command nobody wrote a pattern for still stops the run — `\b7\s+<hex>` catches
 type-7 anywhere, including `ip ospf message-digest-key 1 md5 7 …`, which none of
-the patterns above touch. Checked against all eight real backups, IOS certificate
-chains included, with no false positives.
+the patterns above touch. Regression tests exercise IOS and ASA secret shapes,
+including type 7, on every CI run.
 
-Both backup plays now carry `any_errors_fatal: true`, so a failed scrub check
+Both backup plays carry `any_errors_fatal: true`, so a failed scrub check
 stops the whole run — including the commit-and-push play that imports them.
 Without it, the device with the unrecognised credential would have been committed
 and pushed while the run was still marked failed.
@@ -169,9 +181,9 @@ grep -rn "secret 9\|pre-shared-key\|Serial Number" backups/
 
 Every match should read `<REDACTED>`.
 
-**Tradeoff:** scrubbed backups are not restore artifacts. They remain useful for drift detection — a redacted line still changes when the underlying secret changes — but a rebuild needs the credentials supplied separately.
-
-**Second tradeoff, less obvious:** redaction also hides rotation. Every enable
+**Tradeoff:** scrubbed backups are not restore artifacts. They remain useful for
+non-secret drift detection, but a rebuild needs credentials supplied separately.
+Redaction also hides rotation: every enable
 secret reads `<REDACTED>` whether it was changed yesterday or two years ago, so
 the one thing an audit most wants from a config history — when did this
 credential last move — is exactly what these backups cannot answer.
@@ -209,10 +221,11 @@ Verified by adding a banner on ACC1 **without** saving it, then running the play
 
 Committed automatically with timestamp and author. Because the playbook reads **running-config**, it catches changes that were never written to startup-config — the exact failure mode that caused repeated config loss earlier in this build.
 
-Scheduled hourly via cron:
+Scheduled hourly through a non-blocking `flock` wrapper, so a slow run cannot
+overlap the next cron or a manual invocation of the same wrapper:
 
 ```
-0 * * * * cd /home/cisco/network-automation && /usr/bin/ansible-playbook playbooks/backup_and_commit.yml >> /home/cisco/backup.log 2>&1
+0 * * * * /usr/bin/bash /home/cisco/network-automation/scripts/run_backup.sh >> /home/cisco/backup.log 2>&1
 ```
 
 This ran for 25 days without pushing anything. See §10, *Twenty-five days of
@@ -275,13 +288,14 @@ usefulness:
    the session and leaves the switch reachable by console only.
 2. **`serial: 1` with `any_errors_fatal: true`** — stop at the first failure
    rather than repeating the same mistake across the whole access layer.
-3. **Nothing is saved until the device answers afterwards.** `save_when` is
-   gated behind a post-change reachability check, so a change that breaks
-   management survives only until the next reload.
+3. **Nothing is saved until a new connection verifies state.** The persistent
+   SSH session is closed, TCP/22 is tested from the controller, Ansible reconnects,
+   and the expected SVI address, line protocol and default route are asserted.
 
 The pre-change backup it takes lands in `backups-pre-change/`, which is
 gitignored — those files come straight off the device with no scrub step, so
-committing them would put back exactly what a history rewrite once took out.
+committing them would publish raw credential material. The directory is mode
+`0700`, and each completed file is mode `0600`.
 
 ---
 
@@ -299,30 +313,31 @@ but an ignored error sets no exit code. The playbook printed `FAIL` on screen an
 told cron, CI, and anything else driving it that the run had passed. A compliance
 check that cannot fail is a report, not a gate.
 
-The fix is a fifth play. Each of the four check plays records its own findings as
-a host fact; the verdict play collects them on localhost and fails once, at the
-end, with the whole list:
+The fix is a fifth play. Each check play records its findings and a completion
+marker as host facts; the verdict collects them through one audited host and
+fails once, at the end, with the whole list:
 
 ```yaml
 - name: Collect findings from every audited device
   ansible.builtin.set_fact:
     all_failures: >-
       {{ (all_failures | default([]))
-         + (hostvars[item].compliance_failures
-            if hostvars[item].compliance_failures is defined
-            else [item ~ ': checks did not run (unreachable, or the play errored)']) }}
-  loop: "{{ audited_hosts }}"
+         + (hostvars[item].compliance_failures | default([]))
+         + ([item ~ ': incomplete audit phase(s): '
+             ~ (missing_phases | join(', '))]
+            if missing_phases | length > 0 else []) }}
+  loop: "{{ ansible_play_hosts_all }}"
 ```
 
 Two details in that snippet are the whole point. Aggregating *at the end* rather
 than per-play means a device that fails the baseline still gets its access,
 distribution and core checks run instead of being dropped from the remaining
-plays. And a host that never reported is counted as a **failure**, not skipped —
-an unreachable device produces no findings, and reading "no findings" as
-"compliant" is precisely how a monitoring system reports a healthy estate while
-half of it is off the network.
+plays. Phase markers also distinguish "this layer passed" from "this layer never
+finished". An unreachable device or failed gather is therefore a **failure**,
+not an empty finding list misread as compliant.
 
-The verdict play targets `hosts: ios` with `run_once`, not `hosts: localhost`.
+The verdict targets `hosts: ios`; its aggregation block uses `run_once`. It does
+not target `hosts: localhost`.
 The first version targeted localhost, which passed a full run and then did this:
 
 ```
@@ -349,10 +364,9 @@ verified against four cases — full run clean, full run with a finding, a host
 that never reported, and `--limit` — because the first three all passed while
 the fourth was silently broken.
 
-**Known gap:** `audited_hosts` is the eight IOS devices. ASAV-0 has no checks in
-this playbook at all. Putting it in the list would produce a permanent false
-finding and pretending it is audited would be worse, so the firewall is named as
-unaudited here rather than papered over in the code.
+**Known gap:** the audited target is the eight IOS devices. ASAV-0 has no checks
+in this playbook. Adding it to an IOS-only audit would produce a permanent false
+finding, so the firewall is named as unaudited rather than papered over in code.
 
 📄 Full detail: [`compliance-checking.md`](./compliance-checking.md)
 
@@ -469,10 +483,10 @@ showed it.
 
 Three changes came out of it:
 
-* `git pull --no-rebase` before the push, so a diverged branch merges instead of
-  rejecting — wrapped in `block`/`rescue` that runs `git merge --abort` on
-  conflict, because a half-finished merge would fail every subsequent nightly run
-  on the same wreckage;
+* `git pull --rebase` before the push, so remote edits are integrated without an
+  unattended merge commit — wrapped in `block`/`rescue` that runs
+  `git rebase --abort` on conflict, because a half-finished rebase would fail
+  every subsequent hourly run on the same wreckage;
 * the push no longer runs only `when` this run committed something. A commit
   stranded by Monday's failed push has to be able to leave on Tuesday;
 * an explicit check afterwards that nothing is still local:
@@ -559,13 +573,14 @@ never happened.
 
 ```bash
 yamllint --strict .
-ansible-lint
+python -m unittest discover -s tests -v
+ansible-lint --profile production
 ```
 
-Both run in CI on every push. The repository is clean at ansible-lint's
-`production` profile, which is its strictest.
+All three run in CI on every push. The workflow uses the same pinned Ansible,
+collection and lint versions as a clean controller installation.
 
-Nothing is skipped globally. The two rules this repository legitimately breaks are
+Nothing is skipped globally. The three rules this repository legitimately breaks are
 silenced with inline `# noqa` on the individual tasks, so the rules stay live
 everywhere else:
 
@@ -574,6 +589,8 @@ everywhere else:
   or push, so there is no module for what that play does.
 * `no-relative-paths` on the template render in `generate_configs.yml`, where
   playbooks live in `playbooks/` and templates in `templates/`.
+* `run-once[task]` on the final compliance aggregation block. The verdict must
+  evaluate the complete host set once, under the default linear strategy.
 
 The CI job writes a placeholder to `~/.vault_pass` before linting. `ansible.cfg`
 points at that path, and without it every playbook fails to load and lint reports

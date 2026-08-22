@@ -53,7 +53,10 @@ ip route 0.0.0.0 0.0.0.0 {{ svi.gateway }}
   delegate_to: localhost
 ```
 
-**Push to device** — `ios_config` renders the template itself and sends only the lines that differ from running-config.
+**Push to device** — `ios_config` renders the template itself and sends only the
+lines that differ from running-config. The play runs one switch at a time,
+checks all management data before applying it, and saves only after a new SSH
+session verifies the intended SVI and default route.
 
 ```yaml
 - name: Apply templated config
@@ -61,10 +64,20 @@ ip route 0.0.0.0 0.0.0.0 {{ svi.gateway }}
     src: "{{ playbook_dir }}/../templates/access_mgmt.j2"
   register: cfg
 
-- name: Save config
+- name: Close the persistent session
+  ansible.builtin.meta: reset_connection
+
+- name: Verify through a fresh connection
+  cisco.ios.ios_command:
+    commands:
+      - "show ip interface brief | include ^Vlan{{ mgmt_entry.vlan }}"
+      - show ip route 0.0.0.0
+  register: verify
+
+- name: Save only after verification
   cisco.ios.ios_config:
     save_when: always
-  when: cfg.changed
+  when: cfg.updates | default([]) | length > 0
 ```
 
 Always dry-run first:
@@ -95,12 +108,13 @@ With `save_when: modified` set directly on the config task, every run reported `
 
 That makes `changed` useless as a signal, which matters because the rest of this project depends on it meaning something.
 
-Fixed by splitting the save into its own task, conditional on the first having actually changed something:
+Fixed by splitting the save into its own task, after fresh-session verification,
+and conditioning it on the module's actual command list:
 
 ```yaml
   register: cfg
 ...
-  when: cfg.changed
+  when: cfg.updates | default([]) | length > 0
 ```
 
 Now a converged device reports `ok`, `changed=0`, and the save task skips. Config still persists to startup-config when it genuinely changes.
@@ -132,7 +146,16 @@ IOS rejected it and Ansible surfaced the CLI error. The safety net worked, but o
 
 Had the typo been `10.0.30.5` instead of `10.0.30.4`, IOS would have accepted it and quietly moved that switch's management address, breaking SSH to it.
 
-Templating moves the risk. Config is no longer typed by hand and mistyped at the CLI — it is generated faithfully from data, which means errors in the data are reproduced exactly, on every device the template covers. `--check --diff` before every push matters more here, not less.
+Templating moves the risk. Config is no longer typed by hand and mistyped at the
+CLI — it is generated faithfully from data, which means errors in the data are
+reproduced exactly on every device the template covers.
+
+That incident happened in the first version. The current deployment playbook
+rejects malformed or out-of-range addresses, duplicate management IPs, a gateway
+outside the management `/24`, and any template address that differs from the
+inventory address before it changes a device. `--check --diff` still matters:
+the pre-flight guards catch known failure shapes, while the diff lets a human
+review the actual commands.
 
 ---
 

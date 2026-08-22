@@ -3,22 +3,18 @@
 #
 #   ansible-galaxy collection install -r collections/requirements.yml
 #
-# cisco.asa is the reason this file has to exist. `pip install ansible` ships
-# the batteries-included bundle and cisco.ios comes with it — cisco.asa does
-# not. A freshly built controller therefore runs every IOS playbook fine and
-# fails only on the ASA play in backup_configs.yml, which is an annoying way
-# to find out about a missing dependency at 02:00 from cron.
+# The project installs ansible-core rather than the batteries-included
+# `ansible` package, so every network collection is declared explicitly. A
+# freshly built controller therefore gets the same module versions as CI.
 #
-# No versions are pinned. That is a deliberate but temporary choice: pinning
-# to numbers guessed rather than measured is worse than not pinning. To pin
-# these properly, run
-#
-#   ansible-galaxy collection list | grep -E 'cisco\.(ios|asa)|netcommon'
-#
-# on the controller that actually runs these playbooks and paste the versions
-# in as `version: "x.y.z"`.
+# Versions are pinned to the set used by the controller and CI. In particular,
+# cisco.asa is held on the ansible-core 2.17 compatibility line; upstream does
+# not guarantee that collection on newer ansible-core releases.
 
 collections:
   - name: cisco.ios
+    version: "11.4.2"
   - name: cisco.asa
+    version: "6.1.0"
   - name: ansible.netcommon
+    version: "8.6.1"

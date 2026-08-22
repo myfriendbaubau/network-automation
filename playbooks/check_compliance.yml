@@ -1,76 +1,85 @@
 ---
-# Compliance audit across the estate.
-#
-# Every individual check carries `ignore_errors: true` on purpose: the point
-# of an audit is to see all the findings, not to stop at the first one. The
-# cost is that ignored errors do not set an exit code, so until PLAY 5 this
-# playbook reported failures on screen and still exited 0 — which means cron,
-# CI, or anything else driving it read the run as a pass.
-#
-# So each play records its own failures as a host fact, and PLAY 5 collects
-# them on localhost and fails once, at the end, with the whole list. Doing it
-# at the end rather than per-play also means a device that fails the baseline
-# still gets its access / distribution / core checks run instead of being
-# dropped from the remaining plays.
+# Run every audit check, record every finding, then fail once at the end.
+# Individual assertions deliberately continue so one failed rule does not hide
+# the rest of a device's results. PLAY 5 turns the collected findings into a
+# reliable non-zero exit status for cron and CI.
 
-# ============================================================
-# PLAY 1 — baseline security, applies to every IOS device
-# ============================================================
 - name: Baseline security checks
   hosts: ios
   gather_facts: false
 
   tasks:
-    - name: Gather baseline config
+    - name: Gather baseline configuration and state
       cisco.ios.ios_command:
         commands:
           - show running-config | include ^ntp server
-          - show running-config | include transport input
+          - show running-config | section ^line vty
           - show running-config | include ^enable secret
           - show running-config | include ^service password-encryption
           - show ip ssh
       register: base
 
-    - name: NTP is configured
+    - name: Required NTP servers are configured
       ansible.builtin.assert:
-        that: base.stdout[0] | length > 0
-        fail_msg: "no ntp server configured"
+        that:
+          - configured_ntp_servers | sort == expected_ntp_servers | sort
+        fail_msg: >-
+          NTP servers differ from intent. Expected {{ expected_ntp_servers }};
+          found {{ configured_ntp_servers }}.
+      vars:
+        configured_ntp_servers: >-
+          {{ base.stdout[0] | regex_findall('(?m)^ntp server (\S+)') }}
       register: c_ntp
       ignore_errors: true
 
-    - name: Telnet is disabled on VTY
+    - name: Every VTY range permits SSH only
       ansible.builtin.assert:
-        that: "'telnet' not in base.stdout[1]"
-        fail_msg: "telnet allowed on vty"
+        that:
+          - vty_transports | length > 0
+          - vty_transports | length == vty_range_count | int
+          - vty_transports | difference(['ssh']) | length == 0
+        fail_msg: >-
+          VTY transport must be exactly "ssh" on every range; found:
+          {{ vty_transports | join(', ') if vty_transports | length > 0 else 'none' }}
+      vars:
+        vty_transports: >-
+          {{ base.stdout[1]
+             | regex_findall('(?m)^\s*transport input\s+(.+)$')
+             | map('trim') | list }}
+        vty_range_count: >-
+          {{ base.stdout[1] | regex_findall('(?m)^line vty\s+') | length }}
       register: c_telnet
       ignore_errors: true
 
-    - name: Enable secret is set
+    - name: A strong enable secret is configured
       ansible.builtin.assert:
-        that: base.stdout[2] | length > 0
-        fail_msg: "no enable secret (weak or missing)"
+        that:
+          - base.stdout[2] is search('(?m)^enable secret (8|9) ')
+        fail_msg: "no type 8 or type 9 enable secret configured"
       register: c_secret
       ignore_errors: true
 
-    - name: Password encryption is on
+    - name: Password encryption is enabled
       ansible.builtin.assert:
-        that: base.stdout[3] | length > 0
+        that:
+          - base.stdout[3] is search('(?m)^service password-encryption$')
         fail_msg: "service password-encryption missing"
       register: c_pwenc
       ignore_errors: true
 
-    - name: SSH version 2
+    - name: SSH version 2 is operational
       ansible.builtin.assert:
-        that: "'version 2' in base.stdout[4]"
-        fail_msg: "ssh version 2 not enforced"
+        that:
+          - base.stdout[4] is search('(?i)version 2')
+        fail_msg: "SSH version 2 is not operational"
       register: c_ssh
       ignore_errors: true
 
-    - name: Baseline result
+    - name: Report baseline result
       ansible.builtin.debug:
         msg:
           - "NTP           {{ 'FAIL' if c_ntp.failed else 'pass' }}"
-          - "Telnet off    {{ 'FAIL' if c_telnet.failed else 'pass' }}"
+          - "VTY SSH only  {{ 'FAIL' if c_telnet.failed else 'pass' }}"
           - "Enable secret {{ 'FAIL' if c_secret.failed else 'pass' }}"
           - "Pwd encrypt   {{ 'FAIL' if c_pwenc.failed else 'pass' }}"
           - "SSH v2        {{ 'FAIL' if c_ssh.failed else 'pass' }}"
@@ -79,237 +88,288 @@
       ansible.builtin.set_fact:
         compliance_failures: >-
           {{ (compliance_failures | default([]))
-             + ([inventory_hostname ~ ': no ntp server configured']
+             + ([inventory_hostname ~ ': NTP server set differs from intent']
                 if c_ntp.failed else [])
-             + ([inventory_hostname ~ ': telnet allowed on vty']
+             + ([inventory_hostname ~ ': one or more VTY ranges are not SSH-only']
                 if c_telnet.failed else [])
-             + ([inventory_hostname ~ ': no enable secret']
+             + ([inventory_hostname ~ ': no type 8/9 enable secret']
                 if c_secret.failed else [])
              + ([inventory_hostname ~ ': service password-encryption missing']
                 if c_pwenc.failed else [])
-             + ([inventory_hostname ~ ': ssh version 2 not enforced']
+             + ([inventory_hostname ~ ': SSH version 2 is not operational']
                 if c_ssh.failed else []) }}
+        compliance_phases_completed: >-
+          {{ (compliance_phases_completed | default([])) + ['baseline'] }}
 
-# ============================================================
-# PLAY 2 — access layer only
-# ============================================================
 - name: Access layer checks
   hosts: access
   gather_facts: false
 
   tasks:
-    - name: Gather access config
+    - name: Gather every expected host-facing interface
       cisco.ios.ios_command:
         commands:
-          - show running-config | include switchport port-security$
-          - show running-config | include spanning-tree bpduguard
-          - show running-config | include ^ip dhcp snooping$
-      register: acc
+          - "show running-config interface {{ item }}"
+      loop: "{{ host_facing_ports[inventory_hostname] }}"
+      loop_control:
+        label: "{{ item }}"
+      register: access_port_config
 
-    - name: Port-security enabled
+    - name: Port security is enabled on every host-facing interface
       ansible.builtin.assert:
-        that: acc.stdout[0] | length > 0
-        fail_msg: "no port-security on any interface"
+        that:
+          - item.stdout[0] is search('(?m)^ switchport mode access$')
+          - item.stdout[0] is search('(?m)^ switchport port-security$')
+        fail_msg: "{{ item.item }} is not an access port with port-security enabled"
+      loop: "{{ access_port_config.results }}"
+      loop_control:
+        label: "{{ item.item }}"
       register: c_portsec
       ignore_errors: true
 
-    - name: BPDU guard enabled
+    - name: BPDU Guard is enabled on every host-facing interface
       ansible.builtin.assert:
-        that: acc.stdout[1] | length > 0
-        fail_msg: "no bpduguard configured"
+        that:
+          - item.stdout[0] is search('(?m)^ spanning-tree bpduguard enable$')
+        fail_msg: "{{ item.item }} does not have BPDU Guard enabled"
+      loop: "{{ access_port_config.results }}"
+      loop_control:
+        label: "{{ item.item }}"
       register: c_bpdu
       ignore_errors: true
 
-    - name: DHCP snooping enabled
+    - name: Gather DHCP snooping configuration
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include ^ip dhcp snooping
+      register: acc_snooping
+
+    - name: DHCP snooping is enabled for the access VLAN
       ansible.builtin.assert:
-        that: acc.stdout[2] | length > 0
-        fail_msg: "dhcp snooping not enabled"
+        that:
+          - "'ip dhcp snooping' in acc_snooping.stdout[0].splitlines()"
+          - expected_snooping_vlan in acc_snooping.stdout[0].splitlines()
+        fail_msg: >-
+          DHCP snooping must be enabled globally and for VLAN
+          {{ mgmt_svi[inventory_hostname].vlan }}
+      vars:
+        expected_snooping_vlan: >-
+          ip dhcp snooping vlan {{ mgmt_svi[inventory_hostname].vlan }}
       register: c_snoop
       ignore_errors: true
 
-    - name: Access result
+    - name: Report access result
       ansible.builtin.debug:
         msg:
           - "Port-security {{ 'FAIL' if c_portsec.failed else 'pass' }}"
-          - "BPDU guard    {{ 'FAIL' if c_bpdu.failed else 'pass' }}"
+          - "BPDU Guard    {{ 'FAIL' if c_bpdu.failed else 'pass' }}"
           - "DHCP snoop    {{ 'FAIL' if c_snoop.failed else 'pass' }}"
 
-    - name: Record access layer failures
+    - name: Record access failures
       ansible.builtin.set_fact:
         compliance_failures: >-
           {{ (compliance_failures | default([]))
-             + ([inventory_hostname ~ ': no port-security on any interface']
+             + ([inventory_hostname ~ ': port-security missing on a host-facing port']
                 if c_portsec.failed else [])
-             + ([inventory_hostname ~ ': no bpduguard configured']
+             + ([inventory_hostname ~ ': BPDU Guard missing on a host-facing port']
                 if c_bpdu.failed else [])
-             + ([inventory_hostname ~ ': dhcp snooping not enabled']
+             + ([inventory_hostname ~ ': DHCP snooping missing for the access VLAN']
                 if c_snoop.failed else []) }}
+        compliance_phases_completed: >-
+          {{ (compliance_phases_completed | default([])) + ['access'] }}
 
-# ============================================================
-# PLAY 3 — distribution layer only
-# ============================================================
 - name: Distribution layer checks
   hosts: distribution
   gather_facts: false
 
   tasks:
-    - name: Gather distribution config
+    - name: Gather ACL and HSRP configuration
       cisco.ios.ios_command:
         commands:
-          - show ip access-lists MGMT-RESTRICT
+          - show running-config | section ^ip access-list extended MGMT-RESTRICT
+          - show running-config | include ^ standby
           - show running-config | include ip access-group MGMT-RESTRICT
-          - show running-config | include standby .* priority
       register: dist
 
-    - name: MGMT-RESTRICT ACL exists with 3 deny rules
+    - name: MGMT-RESTRICT contains exactly the intended rules
       ansible.builtin.assert:
-        that: dist.stdout[0] | regex_findall('deny') | length == 3
+        that:
+          - actual_acl_rules == mgmt_acl_rules
         fail_msg: >-
-          expected 3 deny rules, found
-          {{ dist.stdout[0] | regex_findall('deny') | length }}
+          MGMT-RESTRICT differs from the intended ordered rule set.
+          Expected {{ mgmt_acl_rules }}; found {{ actual_acl_rules }}
+      vars:
+        actual_acl_rules: >-
+          {{ dist.stdout[0]
+             | regex_findall('(?m)^\s*(\d+\s+(?:deny|permit)\s+.+)$')
+             | map('trim') | list }}
       register: c_acl
       ignore_errors: true
 
-    - name: ACL applied to 3 SVIs
+    - name: Gather every SVI that should carry MGMT-RESTRICT
+      cisco.ios.ios_command:
+        commands:
+          - "show running-config interface {{ item }}"
+      loop: "{{ mgmt_acl_interfaces }}"
+      loop_control:
+        label: "{{ item }}"
+      register: acl_interface_config
+
+    - name: MGMT-RESTRICT is inbound on every intended SVI
       ansible.builtin.assert:
-        that: dist.stdout[1] | regex_findall('access-group') | length == 3
-        fail_msg: >-
-          ACL applied to
-          {{ dist.stdout[1] | regex_findall('access-group') | length }}
-          interfaces, expected 3
-      register: c_aclapply
+        that:
+          - item.stdout[0] is search('(?m)^ ip access-group MGMT-RESTRICT in$')
+        fail_msg: "MGMT-RESTRICT is not applied inbound on {{ item.item }}"
+      loop: "{{ acl_interface_config.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      register: c_aclapply_interfaces
       ignore_errors: true
 
-    - name: HSRP priority 110 present
+    - name: MGMT-RESTRICT is not applied to unexpected interfaces
       ansible.builtin.assert:
-        that: "'110' in dist.stdout[2]"
-        fail_msg: "no HSRP priority 110 - this switch is not active for any VLAN"
+        that:
+          - dist.stdout[2] | regex_findall('access-group') | length ==
+            mgmt_acl_interfaces | length
+        fail_msg: >-
+          MGMT-RESTRICT is applied to an unexpected number of interfaces.
+      register: c_aclapply_count
+      ignore_errors: true
+
+    - name: HSRP active groups match the distribution design
+      ansible.builtin.assert:
+        that:
+          - actual_active_groups | sort ==
+            expected_hsrp_active_groups[inventory_hostname] | sort
+          - dist.stdout[1] is not search('(?m)^\s*standby 0\b')
+        fail_msg: >-
+          Expected priority 110 on HSRP groups
+          {{ expected_hsrp_active_groups[inventory_hostname] }} and no group 0;
+          found active groups {{ actual_active_groups }}.
+      vars:
+        actual_active_groups: >-
+          {{ dist.stdout[1]
+             | regex_findall('(?m)^\s*standby (\d+) priority 110$') }}
       register: c_hsrp
       ignore_errors: true
 
-    - name: Distribution result
+    - name: Report distribution result
       ansible.builtin.debug:
         msg:
           - "ACL rules     {{ 'FAIL' if c_acl.failed else 'pass' }}"
-          - "ACL applied   {{ 'FAIL' if c_aclapply.failed else 'pass' }}"
-          - "HSRP priority {{ 'FAIL' if c_hsrp.failed else 'pass' }}"
+          - >-
+            ACL applied   {{ 'FAIL'
+            if c_aclapply_interfaces.failed or c_aclapply_count.failed
+            else 'pass' }}
+          - "HSRP design   {{ 'FAIL' if c_hsrp.failed else 'pass' }}"
 
-    - name: Record distribution layer failures
+    - name: Record distribution failures
       ansible.builtin.set_fact:
         compliance_failures: >-
           {{ (compliance_failures | default([]))
-             + ([inventory_hostname ~ ': MGMT-RESTRICT ACL does not have 3 deny rules']
+             + ([inventory_hostname ~ ': MGMT-RESTRICT rules differ from intent']
                 if c_acl.failed else [])
-             + ([inventory_hostname ~ ': MGMT-RESTRICT not applied to 3 SVIs']
-                if c_aclapply.failed else [])
-             + ([inventory_hostname ~ ': not HSRP active for any vlan (no priority 110)']
+             + ([inventory_hostname ~ ': MGMT-RESTRICT SVI application is wrong']
+                if c_aclapply_interfaces.failed or c_aclapply_count.failed else [])
+             + ([inventory_hostname ~ ': HSRP active-group design is wrong']
                 if c_hsrp.failed else []) }}
+        compliance_phases_completed: >-
+          {{ (compliance_phases_completed | default([])) + ['distribution'] }}
 
-# ============================================================
-# PLAY 4 — core layer only
-# ============================================================
 - name: Core layer checks
   hosts: core
   gather_facts: false
 
   tasks:
-    - name: Gather core config
+    - name: Gather OSPF configuration and state
       cisco.ios.ios_command:
         commands:
           - show running-config | include ^router ospf
           - show ip ospf neighbor
-      register: core
+      register: core_state
 
-    - name: OSPF process running
+    - name: OSPF process 1 is configured
       ansible.builtin.assert:
-        that: core.stdout[0] | length > 0
-        fail_msg: "no ospf process configured"
+        that:
+          - core_state.stdout[0] is search('(?m)^router ospf 1$')
+        fail_msg: "OSPF process 1 is not configured"
       register: c_ospf
       ignore_errors: true
 
-    - name: All OSPF neighbours FULL
+    - name: Expected OSPF neighbours are all FULL
       ansible.builtin.assert:
-        that: "'EXSTART' not in core.stdout[1] and 'INIT' not in core.stdout[1]"
-        fail_msg: "one or more OSPF neighbours not in FULL state"
+        that:
+          - ospf_states | length == expected_ospf_neighbors[inventory_hostname]
+          - ospf_states | select('match', '^FULL/') | list | length ==
+            expected_ospf_neighbors[inventory_hostname]
+        fail_msg: >-
+          Expected {{ expected_ospf_neighbors[inventory_hostname] }} FULL OSPF
+          neighbours; parsed states were {{ ospf_states }}.
+      vars:
+        ospf_states: >-
+          {{ core_state.stdout[1]
+             | regex_findall('(?m)^\s*\d+(?:\.\d+){3}\s+\d+\s+(\S+)') }}
       register: c_nbr
       ignore_errors: true
 
-    - name: Core result
+    - name: Report core result
       ansible.builtin.debug:
         msg:
           - "OSPF running  {{ 'FAIL' if c_ospf.failed else 'pass' }}"
           - "Neighbours    {{ 'FAIL' if c_nbr.failed else 'pass' }}"
 
-    - name: Record core layer failures
+    - name: Record core failures
       ansible.builtin.set_fact:
         compliance_failures: >-
           {{ (compliance_failures | default([]))
-             + ([inventory_hostname ~ ': no ospf process configured']
+             + ([inventory_hostname ~ ': OSPF process 1 is not configured']
                 if c_ospf.failed else [])
-             + ([inventory_hostname ~ ': one or more ospf neighbours not FULL']
+             + ([inventory_hostname ~ ': OSPF neighbour count/state is wrong']
                 if c_nbr.failed else []) }}
+        compliance_phases_completed: >-
+          {{ (compliance_phases_completed | default([])) + ['core'] }}
 
-# ============================================================
-# PLAY 5 — verdict
-#
-# The only play that decides anything. Without it the four plays above print
-# FAIL and exit 0.
-#
-# A host that never reported is counted as a failure rather than skipped. An
-# unreachable device produces no `compliance_failures` fact, and treating
-# "no findings" as "compliant" is how a monitoring system reports a healthy
-# estate while half of it is off the network.
-#
-# `hosts: ios` with `run_once`, NOT `hosts: localhost`. The first version of
-# this play targeted localhost, and `--limit ACC1` then matched no host in it:
-#
-#     PLAY [Compliance verdict] ***
-#     skipping: no hosts matched
-#     exit=0
-#
-# The gate vanished and the run reported success — the same "cannot fail"
-# behaviour this play exists to remove, reintroduced by a flag the README
-# recommends using. Targeting the audited group means the verdict runs
-# whenever any audited host ran.
-#
-# `ansible_play_hosts_all` rather than `groups['ios']` for the same reason: it
-# is the roster after --limit, so limiting to one switch audits one switch
-# instead of reporting seven phantom "did not run" findings. It still includes
-# hosts that were unreachable or failed, so the guard above survives.
-#
-# Scope: the IOS devices. ASAV-0 has no checks in this playbook at all, so it
-# is deliberately outside the audited group — counting it would produce a
-# permanent false finding, and pretending it is audited would be worse. The
-# firewall being unaudited is a real gap; it is named in the README rather
-# than hidden here.
-# ============================================================
 - name: Compliance verdict
   hosts: ios
   gather_facts: false
-  run_once: true
 
   tasks:
-    - name: Collect findings from every audited device
-      ansible.builtin.set_fact:
-        all_failures: >-
-          {{ (all_failures | default([]))
-             + (hostvars[item].compliance_failures
-                if hostvars[item].compliance_failures is defined
-                else [item ~ ': checks did not run (unreachable, or the play errored)']) }}
-      loop: "{{ ansible_play_hosts_all }}"
+    - name: Aggregate and enforce the compliance verdict
+      run_once: true  # noqa: run-once[task]
+      block:
+        - name: Collect findings from every audited device
+          ansible.builtin.set_fact:
+            all_failures: >-
+              {{ (all_failures | default([]))
+                 + (hostvars[item].compliance_failures | default([]))
+                 + ([item ~ ': incomplete audit phase(s): '
+                     ~ (missing_phases | join(', '))]
+                    if missing_phases | length > 0 else []) }}
+          loop: "{{ ansible_play_hosts_all }}"
+          vars:
+            expected_phases: >-
+              {{ ['baseline']
+                 + (['access'] if item in groups['access'] else [])
+                 + (['distribution'] if item in groups['distribution'] else [])
+                 + (['core'] if item in groups['core'] else []) }}
+            missing_phases: >-
+              {{ expected_phases
+                 | difference(hostvars[item].compliance_phases_completed
+                              | default([])) }}
 
-    - name: Findings
-      ansible.builtin.debug:
-        msg: "{{ all_failures | default(['none']) }}"
+        - name: Report findings
+          ansible.builtin.debug:
+            msg: "{{ all_failures | default(['none']) }}"
 
-    - name: Fail the run if anything is non-compliant
-      ansible.builtin.assert:
-        that:
-          - (all_failures | default([])) | length == 0
-        fail_msg: >-
-          {{ (all_failures | default([])) | length }} finding(s) across
-          {{ ansible_play_hosts_all | length }} audited device(s). Listed above.
-        success_msg: >-
-          All checks passed on all {{ ansible_play_hosts_all | length }}
-          audited devices.
-        quiet: true
+        - name: Fail the run if anything is non-compliant
+          ansible.builtin.assert:
+            that:
+              - all_failures | default([]) | length == 0
+            fail_msg: >-
+              {{ all_failures | default([]) | length }} finding(s) across
+              {{ ansible_play_hosts_all | length }} audited device(s).
+              Listed above.
+            success_msg: >-
+              All checks passed on all {{ ansible_play_hosts_all | length }}
+              audited devices.
+            quiet: true
