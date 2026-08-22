@@ -1,4 +1,5 @@
 # Network Automation — Ansible
+<!-- divergence test -->
 
 Config-as-code for the 3-tier lab. An Ansible controller inside the fabric manages all nine devices over SSH, backs up their configs to Git, detects drift, verifies compliance, and generates device configuration from templates.
 
