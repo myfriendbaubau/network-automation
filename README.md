@@ -82,7 +82,7 @@ ansible_become_method: ansible.netcommon.enable
 ansible_become_password: "{{ vault_enable_password }}"
 ```
 
-`become` is **required**. The devices run `no aaa new-model`, so a `privilege 15` username does not apply its privilege level to the EXEC session — logins land at `>` and `show running-config` is rejected as invalid input.
+`become` is **required**. The `cisco` account is defined as `username cisco secret 9 ...` with no privilege level attached, so it authenticates at level 1 — logins land at `>` and `show running-config` is rejected as invalid input. Escalation to privileged EXEC goes through the enable secret, which is what `ansible.netcommon.enable` does.
 
 The vault password is read from `~/.vault_pass`, deliberately outside the project directory so it cannot be committed even if `.gitignore` is edited. In production this would come from a secrets manager.
 
@@ -199,7 +199,7 @@ Re-running should report `changed=0`. Idempotency is what separates configuratio
 
 Backup answers *what changed*. Compliance answers *is the network in its intended state* — a different question, and the one that catches config which was never applied in the first place.
 
-`check_compliance.yml` runs 12 checks across four layer-scoped plays (baseline security on all devices, then access, distribution and core specifics), reporting pass/fail per device.
+`check_compliance.yml` runs 13 checks across four layer-scoped plays (baseline security on all IOS devices, then access, distribution and core specifics), reporting pass/fail per device.
 
 Its first run found `service password-encryption` missing on all eight devices — specified in the original build document, never applied.
 
@@ -266,7 +266,11 @@ CORE1>
 
 The prompt is the tell — `>`, not `#`. The session was in user EXEC mode, where `show running-config` isn't a valid command.
 
-The devices run `no aaa new-model`. Without AAA authorization, IOS does not apply a username's configured privilege level to the EXEC session, so `username cisco privilege 15` grants nothing at login. The earlier fact-gathering run had masked this, because `ios_facts` only issues `show version` — which is valid in user EXEC and gave no hint that privilege escalation was missing.
+The account is `username cisco secret 9 ...` with no privilege level attached, so it authenticates at level 1. `login local` on the VTY lines applies that level to the session, and level 1 is user EXEC.
+
+The earlier fact-gathering run had masked this, because `ios_facts` only issues `show version` — valid in user EXEC, so it gave no hint that privilege escalation was missing.
+
+> **An earlier version of this README explained this wrongly**, claiming that `no aaa new-model` prevents a `privilege 15` username from applying its level. Two things were wrong with that. No IOS device here has ever carried `privilege 15` on a username — checked across every commit in this repository's history — so there was nothing for that mechanism to act on. And the mechanism runs the other way: with `login local` and no AAA, a username's privilege level *is* applied at login; it is *with* `aaa new-model` that `aaa authorization exec default local` becomes necessary. The fix below is correct either way — escalating explicitly through the enable secret is better practice than logging straight into privileged EXEC.
 
 Fixed by enabling `become` in `group_vars/ios.yml`, with the enable password supplied from the vault:
 
