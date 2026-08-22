@@ -1,15 +1,110 @@
 ---
+# Deploy the management SVI and default route to the access switches.
+#
+# This playbook rewrites the very address Ansible is connected on:
+# hosts.yml reaches ACC1 at 10.0.10.4, and the template sets
+# `interface Vlan10 / ip address {{ mgmt_svi.ACC1.ip }}`. A wrong value in
+# group_vars/access.yml moves the management address out from under the
+# session, and the switch becomes console-only.
+#
+# Three things guard against that, in order of usefulness:
+#   1. Pre-flight asserts run before any device is touched.
+#   2. serial: 1 + any_errors_fatal stop at the first failure instead of
+#      repeating the mistake across the whole access layer.
+#   3. The config is NOT saved until the device has answered afterwards.
+#      An unsaved bad change survives only until the next reload.
+
 - name: Deploy access switch configs
   hosts: access
   gather_facts: false
+  serial: 1
+  any_errors_fatal: true
 
   tasks:
+
+    # ── Pre-flight ────────────────────────────────────────────────────
+    # Cheap, local, and the only checks that run before a device changes.
+
+    - name: Management variables are present and well formed
+      ansible.builtin.assert:
+        that:
+          - mgmt_svi is defined
+          - mgmt_svi[inventory_hostname] is defined
+          - mgmt_svi[inventory_hostname].vlan | int > 0
+          - mgmt_svi[inventory_hostname].vlan | int < 4095
+          - mgmt_svi[inventory_hostname].ip is match('^(\d{1,3}\.){3}\d{1,3}$')
+          - mgmt_svi[inventory_hostname].gateway is match('^(\d{1,3}\.){3}\d{1,3}$')
+          - mgmt_svi[inventory_hostname].name | length > 0
+        fail_msg: >-
+          mgmt_svi entry for {{ inventory_hostname }} is missing or malformed.
+        quiet: true
+
+    - name: Template address matches the address Ansible connects on
+      ansible.builtin.assert:
+        that:
+          - mgmt_svi[inventory_hostname].ip == ansible_host
+        fail_msg: >-
+          Template would set {{ mgmt_svi[inventory_hostname].ip }} on
+          {{ inventory_hostname }}, but the inventory connects on
+          {{ ansible_host }}. Applying this would move the management
+          address mid-session and leave the switch reachable by console only.
+          Fix group_vars/access.yml or hosts.yml so the two agree.
+        quiet: true
+
+    - name: Gateway is inside the management subnet
+      ansible.builtin.assert:
+        that:
+          - mgmt_svi[inventory_hostname].gateway.split('.')[0:3] ==
+            mgmt_svi[inventory_hostname].ip.split('.')[0:3]
+        fail_msg: >-
+          Gateway {{ mgmt_svi[inventory_hostname].gateway }} is not in the same
+          /24 as {{ mgmt_svi[inventory_hostname].ip }}. A default route to an
+          unreachable next hop removes this switch from management.
+        quiet: true
+
+    # ── Apply ─────────────────────────────────────────────────────────
+
     - name: Apply templated config
       cisco.ios.ios_config:
         src: "{{ playbook_dir }}/../templates/access_mgmt.j2"
+        backup: true
       register: cfg
 
-    - name: Save config
+    # ── Verify before persisting ──────────────────────────────────────
+    # This ordering is the point. If the change broke management, the
+    # command below fails, any_errors_fatal halts the run, and startup-config
+    # still holds the last known-good version — so a reload recovers the
+    # switch. Saving first would make the breakage permanent.
+
+    - name: Device still answers after the change
+      cisco.ios.ios_command:
+        commands:
+          - show ip interface brief | include Vlan
+      register: verify
+      retries: 3
+      delay: 10
+      until: verify is succeeded
+
+    - name: Save config only once reachability is confirmed
       cisco.ios.ios_config:
         save_when: always
       when: cfg.changed
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: {{ 'changed and saved' if cfg.changed
+          else 'already compliant' }}
+
+# ─────────────────────────────────────────────────────────────────────
+# NEXT LEVEL, not implemented here
+#
+# The professional pattern for remote management changes is a dead-man
+# switch: issue `reload in 5` before applying, then `reload cancel` only
+# after connectivity is confirmed. If the change locks you out, the device
+# reboots into the saved config on its own and nobody drives to the rack.
+#
+# It needs ios_command with prompt/answer handling for the reload
+# confirmation, and it only works because the config is not saved until
+# after verification — which is the ordering already used above.
+# ─────────────────────────────────────────────────────────────────────
