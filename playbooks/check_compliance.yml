@@ -260,19 +260,33 @@
 # "no findings" as "compliant" is how a monitoring system reports a healthy
 # estate while half of it is off the network.
 #
-# Scope: the eight IOS devices. ASAV-0 has no checks in this playbook at all,
-# so it is deliberately not in `audited_hosts` — counting it would produce a
+# `hosts: ios` with `run_once`, NOT `hosts: localhost`. The first version of
+# this play targeted localhost, and `--limit ACC1` then matched no host in it:
+#
+#     PLAY [Compliance verdict] ***
+#     skipping: no hosts matched
+#     exit=0
+#
+# The gate vanished and the run reported success — the same "cannot fail"
+# behaviour this play exists to remove, reintroduced by a flag the README
+# recommends using. Targeting the audited group means the verdict runs
+# whenever any audited host ran.
+#
+# `ansible_play_hosts_all` rather than `groups['ios']` for the same reason: it
+# is the roster after --limit, so limiting to one switch audits one switch
+# instead of reporting seven phantom "did not run" findings. It still includes
+# hosts that were unreachable or failed, so the guard above survives.
+#
+# Scope: the IOS devices. ASAV-0 has no checks in this playbook at all, so it
+# is deliberately outside the audited group — counting it would produce a
 # permanent false finding, and pretending it is audited would be worse. The
 # firewall being unaudited is a real gap; it is named in the README rather
 # than hidden here.
 # ============================================================
 - name: Compliance verdict
-  hosts: localhost
+  hosts: ios
   gather_facts: false
-  connection: local
-
-  vars:
-    audited_hosts: "{{ groups['ios'] | default([]) }}"
+  run_once: true
 
   tasks:
     - name: Collect findings from every audited device
@@ -282,7 +296,7 @@
              + (hostvars[item].compliance_failures
                 if hostvars[item].compliance_failures is defined
                 else [item ~ ': checks did not run (unreachable, or the play errored)']) }}
-      loop: "{{ audited_hosts }}"
+      loop: "{{ ansible_play_hosts_all }}"
 
     - name: Findings
       ansible.builtin.debug:
@@ -294,7 +308,8 @@
           - (all_failures | default([])) | length == 0
         fail_msg: >-
           {{ (all_failures | default([])) | length }} finding(s) across
-          {{ audited_hosts | length }} audited device(s). Listed above.
+          {{ ansible_play_hosts_all | length }} audited device(s). Listed above.
         success_msg: >-
-          All checks passed on all {{ audited_hosts | length }} audited devices.
+          All checks passed on all {{ ansible_play_hosts_all | length }}
+          audited devices.
         quiet: true

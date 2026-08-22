@@ -322,6 +322,33 @@ an unreachable device produces no findings, and reading "no findings" as
 "compliant" is precisely how a monitoring system reports a healthy estate while
 half of it is off the network.
 
+The verdict play targets `hosts: ios` with `run_once`, not `hosts: localhost`.
+The first version targeted localhost, which passed a full run and then did this:
+
+```
+$ ansible-playbook playbooks/check_compliance.yml --limit ACC1 ; echo "exit=$?"
+...
+PLAY [Compliance verdict] ***
+skipping: no hosts matched
+exit=0
+```
+
+`--limit ACC1` matches no host in a localhost-targeted play, so the gate was
+skipped and the run reported success — the exact "cannot fail" behaviour the
+play was added to remove, reintroduced by a flag §7 of this README recommends
+using. It was one line in a long output and it exits 0, so nothing about it
+looks wrong. Targeting the audited group fixes it, and looping over
+`ansible_play_hosts_all` rather than `groups['ios']` means limiting to one
+switch audits one switch instead of reporting seven phantom "did not run"
+findings — while still including hosts that were unreachable, so the guard
+above survives.
+
+The lesson is narrower than "test your code". A gate that passes has not been
+shown to be capable of failing, and those are different claims. This one was
+verified against four cases — full run clean, full run with a finding, a host
+that never reported, and `--limit` — because the first three all passed while
+the fourth was silently broken.
+
 **Known gap:** `audited_hosts` is the eight IOS devices. ASAV-0 has no checks in
 this playbook at all. Putting it in the list would produce a permanent false
 finding and pretending it is audited would be worse, so the firewall is named as
