@@ -1,9 +1,9 @@
 Building configuration...
 
-Current configuration : 5824 bytes
+Current configuration : 5956 bytes
 !
-! Last configuration change at 20:04:15 UTC Fri Aug 21 2026 by cisco
-! NVRAM config last updated at 18:36:39 UTC Fri Aug 21 2026 by cisco
+! Last configuration change at 11:44:09 UTC Sat Aug 22 2026 by cisco
+! NVRAM config last updated at 11:18:41 UTC Sat Aug 22 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -93,6 +93,8 @@ memory free low-watermark processor 79497
 !
 !
 spanning-tree mode rapid-pvst
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
 spanning-tree extend system-id
 enable secret 9 <REDACTED>
 !
@@ -167,9 +169,10 @@ interface Ethernet0/3
 interface Ethernet1/0
  switchport access vlan 10
  switchport mode access
- switchport port-security maximum 2
+ switchport port-security maximum 5
  switchport port-security mac-address sticky
  switchport port-security mac-address sticky 5254.0010.ef81
+ switchport port-security mac-address sticky 5254.0059.3079
  switchport port-security mac-address sticky 5254.006a.49bf
  switchport port-security
  bandwidth 1000000
