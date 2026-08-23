@@ -2,6 +2,7 @@
 extends: default
 
 ignore: |
+  /.venv/
   backups/
   generated/
   inventory/group_vars/all/vault.yml
