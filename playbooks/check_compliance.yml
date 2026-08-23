@@ -161,20 +161,27 @@
     - name: Report access result
       ansible.builtin.debug:
         msg:
-          - "Port-security {{ 'FAIL' if c_portsec.failed else 'pass' }}"
-          - "BPDU Guard    {{ 'FAIL' if c_bpdu.failed else 'pass' }}"
-          - "DHCP snoop    {{ 'FAIL' if c_snoop.failed else 'pass' }}"
+          - >-
+            Port-security {{ 'FAIL'
+            if (c_portsec is failed) else 'pass' }}
+          - >-
+            BPDU Guard    {{ 'FAIL'
+            if (c_bpdu is failed) else 'pass' }}
+          - >-
+            DHCP snoop    {{ 'FAIL'
+            if (c_snoop is failed) else 'pass' }}
 
     - name: Record access failures
       ansible.builtin.set_fact:
         compliance_failures: >-
           {{ (compliance_failures | default([]))
              + ([inventory_hostname ~ ': port-security missing on a host-facing port']
-                if c_portsec.failed else [])
+                if (c_portsec is failed) else [])
              + ([inventory_hostname ~ ': BPDU Guard missing on a host-facing port']
-                if c_bpdu.failed else [])
+                if (c_bpdu is failed) else [])
              + ([inventory_hostname ~ ': DHCP snooping missing for the access VLAN']
-                if c_snoop.failed else []) }}
+                if (c_snoop is failed) else []) }}
+
         compliance_phases_completed: >-
           {{ (compliance_phases_completed | default([])) + ['access'] }}
 
@@ -259,7 +266,7 @@
           - "ACL rules     {{ 'FAIL' if c_acl.failed else 'pass' }}"
           - >-
             ACL applied   {{ 'FAIL'
-            if c_aclapply_interfaces.failed or c_aclapply_count.failed
+            if (c_aclapply_interfaces is failed) or (c_aclapply_count is failed)
             else 'pass' }}
           - "HSRP design   {{ 'FAIL' if c_hsrp.failed else 'pass' }}"
 
@@ -270,11 +277,13 @@
              + ([inventory_hostname ~ ': MGMT-RESTRICT rules differ from intent']
                 if c_acl.failed else [])
              + ([inventory_hostname ~ ': MGMT-RESTRICT SVI application is wrong']
-                if c_aclapply_interfaces.failed or c_aclapply_count.failed else [])
+                if (c_aclapply_interfaces is failed)
+                or (c_aclapply_count is failed) else [])
              + ([inventory_hostname ~ ': HSRP active-group design is wrong']
                 if c_hsrp.failed else []) }}
         compliance_phases_completed: >-
-          {{ (compliance_phases_completed | default([])) + ['distribution'] }}
+          {{ (compliance_phases_completed | default([]))
+             + ['distribution'] }}
 
 - name: Core layer checks
   hosts: core

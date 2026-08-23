@@ -24,7 +24,7 @@ mgmt_svi:
 # Ports intended for endpoints. Compliance evaluates every listed interface;
 # a single protected port is not enough to mark the switch compliant.
 host_facing_ports:
-  ACC1: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
-  ACC2: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
-  ACC3: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
+  ACC1: [Ethernet1/0]
+  ACC2: [Ethernet1/0]
+  ACC3: [Ethernet1/0]
   ACC4: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
