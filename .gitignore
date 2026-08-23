@@ -1,4 +1,5 @@
 .venv/
+playbooks/backup/
 inventory/group_vars/all/vault.yml
 .vault_pass
 *.retry
