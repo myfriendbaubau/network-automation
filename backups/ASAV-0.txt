@@ -213,6 +213,7 @@ telnet timeout 10
 ssh stricthostkeycheck
 ssh timeout 5
 ssh key-exchange group dh-group14-sha256
+ssh key-exchange hostkey ecdsa
 ssh 10.0.50.0 255.255.255.0 inside-core1
 console timeout 0
 console serial
@@ -282,5 +283,5 @@ call-home
   subscribe-to-alert-group inventory periodic monthly
   subscribe-to-alert-group configuration periodic monthly
   subscribe-to-alert-group telemetry periodic daily
-Cryptochecksum:e3e45445be9b14789e148ef16141564e
+Cryptochecksum:0db1b2652f18ca732829e5e91c2874a1
 : end
