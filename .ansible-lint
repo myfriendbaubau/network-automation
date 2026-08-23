@@ -6,6 +6,8 @@
 # aggregation — are silenced inline, so the rules stay live everywhere else.
 
 exclude_paths:
+  - inventory/group_vars/all/vault.yml
+  - .venv/
   # Device output, not source. Committed on purpose as backup history.
   - backups/
   # Rendered template output. Gitignored; only present after a local run.
