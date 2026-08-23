@@ -95,9 +95,9 @@ memory free low-watermark processor 79497
 !
 spanning-tree mode rapid-pvst
 spanning-tree extend system-id
-enable secret 9 <REDACTED>
+\1 <REDACTED>
 !
-username cisco secret 9 <REDACTED>
+\1 <REDACTED>
 !
 vlan internal allocation policy ascending
 !
