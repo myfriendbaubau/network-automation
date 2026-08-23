@@ -7,25 +7,29 @@ the CML device, verify it, and run the backup playbook again.
 The disposable ASA details and the lab's public-looking loopbacks are accepted
 design choices for this isolated home lab and are deliberately excluded here.
 
-## 1. Protect every endpoint port
+## 1. Protect every actual endpoint port
 
-The current snapshots show port security and BPDU Guard on `Ethernet1/0`, but
-not on every endpoint-facing `Ethernet1/1` and `Ethernet1/2`. The compliance
-intent now lists all three endpoint ports per access switch, so the audit will
-correctly fail until they are protected.
+The compliance scope now matches the CML topology rather than assuming that
+every numbered interface is connected to an endpoint:
 
-Apply the following on each access switch, replacing `<VLAN>` with 10, 20, 30
-or 40 for ACC1, ACC2, ACC3 or ACC4 respectively:
+* `ACC1`: `Ethernet1/0`
+* `ACC2`: `Ethernet1/0`
+* `ACC3`: `Ethernet1/0`
+* `ACC4`: `Ethernet1/0`, `Ethernet1/1`, `Ethernet1/2`
+
+`ACC4` was the only access switch with endpoint-facing `Ethernet1/1` and
+`Ethernet1/2`. Those two ports were missing port security and BPDU Guard. They
+were remediated with:
 
 ```text
 configure terminal
 interface range Ethernet1/1-2
- switchport access vlan <VLAN>
+ switchport access vlan 40
  switchport mode access
  spanning-tree portfast
  spanning-tree bpduguard enable
  switchport port-security
- switchport port-security maximum 2
+ switchport port-security maximum 3
  switchport port-security mac-address sticky
 end
 write memory
@@ -42,8 +46,9 @@ show running-config interface Ethernet1/2
 
 ## 2. Remove the unintended HSRP group 0 command
 
-`DIST1` currently contains `standby 0 preempt` under `Vlan30`. The intended
-group on that SVI is group 3. Remove only the stray group 0 command:
+The backup review found `standby 0 preempt` under `Vlan30` on `DIST1`. The
+intended group on that SVI is group 3, so the stray group 0 command was removed
+with:
 
 ```text
 configure terminal

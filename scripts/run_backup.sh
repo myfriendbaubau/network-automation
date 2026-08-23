@@ -13,4 +13,11 @@ if ! flock -n 9; then
 fi
 
 cd -- "${repo_dir}"
-exec ansible-playbook playbooks/backup_and_commit.yml
+ansible_playbook="${repo_dir}/.venv/bin/ansible-playbook"
+
+if [[ ! -x "${ansible_playbook}" ]]; then
+  printf 'Ansible executable not found: %s\n' "${ansible_playbook}" >&2
+  exit 127
+fi
+
+exec "${ansible_playbook}" playbooks/backup_and_commit.yml

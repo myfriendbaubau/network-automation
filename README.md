@@ -89,7 +89,10 @@ network-automation/
 Setting up a controller from a clean checkout:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ansible-galaxy collection install -r collections/requirements.yml
 echo 'your-vault-password' > ~/.vault_pass && chmod 600 ~/.vault_pass
 yamllint --strict . && ansible-lint --profile production
@@ -227,6 +230,10 @@ overlap the next cron or a manual invocation of the same wrapper:
 ```
 0 * * * * /usr/bin/bash /home/cisco/network-automation/scripts/run_backup.sh >> /home/cisco/backup.log 2>&1
 ```
+
+The wrapper invokes `.venv/bin/ansible-playbook` directly, so cron uses the
+pinned project dependencies without relying on an interactive shell to activate
+the virtual environment.
 
 This ran for 25 days without pushing anything. See §10, *Twenty-five days of
 backups that never left the building*.
