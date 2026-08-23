@@ -1,9 +1,9 @@
 Building configuration...
 
-Current configuration : 6112 bytes
+Current configuration : 6390 bytes
 !
-! Last configuration change at 18:36:52 UTC Fri Aug 21 2026 by cisco
-! NVRAM config last updated at 18:36:53 UTC Fri Aug 21 2026 by cisco
+! Last configuration change at 01:32:26 UTC Sun Aug 23 2026 by cisco
+! NVRAM config last updated at 01:32:28 UTC Sun Aug 23 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -170,7 +170,7 @@ interface Ethernet0/3
 interface Ethernet1/0
  switchport access vlan 40
  switchport mode access
- switchport port-security maximum 2
+ switchport port-security maximum 3
  switchport port-security mac-address sticky
  switchport port-security mac-address sticky 5254.000d.3c1d
  switchport port-security mac-address sticky 5254.0074.db54
@@ -182,14 +182,22 @@ interface Ethernet1/0
 interface Ethernet1/1
  switchport access vlan 40
  switchport mode access
+ switchport port-security maximum 3
+ switchport port-security mac-address sticky
+ switchport port-security
  bandwidth 1000000
  spanning-tree portfast
+ spanning-tree bpduguard enable
 !
 interface Ethernet1/2
  switchport access vlan 40
  switchport mode access
+ switchport port-security maximum 3
+ switchport port-security mac-address sticky
+ switchport port-security
  bandwidth 1000000
  spanning-tree portfast
+ spanning-tree bpduguard enable
 !
 interface Ethernet1/3
  bandwidth 1000000

@@ -1,8 +1,9 @@
 Building configuration...
 
-Current configuration : 7809 bytes
+Current configuration : 7859 bytes
 !
-! Last configuration change at 13:12:10 UTC Sat Aug 22 2026 by cisco
+! Last configuration change at 01:04:17 UTC Sun Aug 23 2026 by cisco
+! NVRAM config last updated at 01:04:19 UTC Sun Aug 23 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -244,7 +245,6 @@ interface Vlan20
 interface Vlan30
  ip address 10.0.30.2 255.255.255.0
  ip helper-address 10.0.12.1
- standby 0 preempt
  standby 3 ip 10.0.30.1
  standby 3 priority 110
  standby 3 preempt
