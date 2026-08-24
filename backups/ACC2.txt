@@ -1,9 +1,9 @@
 Building configuration...
 
-Current configuration : 5939 bytes
+Current configuration : 6347 bytes
 !
-! Last configuration change at 14:41:59 UTC Mon Aug 24 2026 by cisco
-! NVRAM config last updated at 14:42:03 UTC Mon Aug 24 2026 by cisco
+! Last configuration change at 15:56:44 UTC Mon Aug 24 2026 by cisco
+! NVRAM config last updated at 15:56:50 UTC Mon Aug 24 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -178,13 +178,31 @@ interface Ethernet1/0
  spanning-tree bpduguard enable
 !
 interface Ethernet1/1
+ description ** UNUSED - parked **
+ switchport access vlan 999
+ switchport mode access
+ switchport nonegotiate
  bandwidth 1000000
+ shutdown
+ no cdp enable
 !
 interface Ethernet1/2
+ description ** UNUSED - parked **
+ switchport access vlan 999
+ switchport mode access
+ switchport nonegotiate
  bandwidth 1000000
+ shutdown
+ no cdp enable
 !
 interface Ethernet1/3
+ description ** UNUSED - parked **
+ switchport access vlan 999
+ switchport mode access
+ switchport nonegotiate
  bandwidth 1000000
+ shutdown
+ no cdp enable
 !
 interface Vlan20
  description GUESTS - management
