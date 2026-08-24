@@ -174,9 +174,9 @@
           ansible.builtin.assert:
             that:
               - item.stdout[0] is search(expected_vlan_pattern)
-          fail_msg: >-
-            VLAN {{ unused_port_policy.vlan }} is missing, incorrectly named,
-            or inactive on {{ inventory_hostname }}.
+            fail_msg: >-
+              VLAN {{ unused_port_policy.vlan }} is missing, incorrectly named,
+              or inactive on {{ inventory_hostname }}.
           loop: "{{ parked_port_verify.results }}"
           loop_control:
             label: "{{ item.item }}"
@@ -194,7 +194,7 @@
               - item.stdout[1] is search('(?m)^ switchport nonegotiate$')
               - item.stdout[1] is search('(?m)^ no cdp enable$')
               - item.stdout[1] is search('(?m)^ shutdown$')
-          fail_msg: "{{ item.item }} does not match the unused-port policy."
+            fail_msg: "{{ item.item }} does not match the unused-port policy."
           loop: "{{ parked_port_verify.results }}"
           loop_control:
             label: "{{ item.item }}"
