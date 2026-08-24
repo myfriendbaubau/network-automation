@@ -24,6 +24,7 @@ https://github.com/myfriendbaubau/3-Tier-Enterprise-Network-Lab
 | Compliance checking across 4 device layers | `check_compliance.yml` |
 | Config generation from Jinja2 templates | `generate_configs.yml` |
 | Deploy templated config to devices | `deploy_configs.yml` |
+| Park and shut down declared unused ports | `harden_unused_ports.yml` |
 | NTP configuration | `configure_ntp.yml` |
 
 Controller: Ubuntu 24.04, `10.0.50.10`, attached to CORE1 `Gi7`.
@@ -74,6 +75,7 @@ network-automation/
 │   ├── check_compliance.yml
 │   ├── generate_configs.yml
 │   ├── deploy_configs.yml
+│   ├── harden_unused_ports.yml
 │   └── configure_ntp.yml
 ├── scripts/
 │   └── run_backup.sh             # flock-protected scheduled entry point

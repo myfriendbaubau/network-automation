@@ -1,0 +1,224 @@
+---
+# Put declared unused access-switch interfaces into a shutdown parking VLAN.
+# The inventory is authoritative: never build an interface range by assuming
+# every switch has the same unused ports.
+
+- name: Harden unused access-switch ports
+  hosts: access
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  tasks:
+    - name: Unused-port intent must exist
+      ansible.builtin.assert:
+        that:
+          - unused_port_policy is defined
+          - unused_ports is defined
+          - host_facing_ports is defined
+          - inventory_hostname in unused_ports
+          - inventory_hostname in host_facing_ports
+        fail_msg: "Unused-port intent is missing for {{ inventory_hostname }}."
+        quiet: true
+
+    - name: Unused-port intent must be safe and well formed
+      ansible.builtin.assert:
+        that:
+          - unused_port_policy.vlan | int > 0
+          - unused_port_policy.vlan | int < 4095
+          - unused_port_policy.vlan_name | length > 0
+          - unused_port_policy.description | length > 0
+          - unused_port_policy.vtp_server in groups['distribution']
+          - unused_ports[inventory_hostname] | length > 0
+          - >-
+            unused_ports[inventory_hostname] | unique | length
+            == unused_ports[inventory_hostname] | length
+          - >-
+            unused_ports[inventory_hostname]
+            | intersect(host_facing_ports[inventory_hostname])
+            | length == 0
+        fail_msg: >-
+          {{ inventory_hostname }} has invalid or overlapping unused-port
+          intent. A host-facing interface must never be parked.
+        quiet: true
+
+    - name: Gather operational state for every declared unused port
+      cisco.ios.ios_command:
+        commands:
+          - "show interfaces {{ item }} | include ^{{ item }}"
+      loop: "{{ unused_ports[inventory_hostname] }}"
+      loop_control:
+        label: "{{ item }}"
+      register: unused_port_state
+
+    - name: Refuse to park a missing or physically active interface
+      ansible.builtin.assert:
+        that:
+          - item.stdout[0] | length > 0
+          - item.stdout[0] is not search(' is up,')
+        fail_msg: >-
+          {{ item.item }} is missing or physically up. Confirm the interface,
+          cabling and inventory instead of shutting it down automatically.
+      loop: "{{ unused_port_state.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Gather VTP roles
+      cisco.ios.ios_command:
+        commands:
+          - show vtp status
+      register: access_vtp_status
+
+    - name: Gather the configured VTP server role
+      cisco.ios.ios_command:
+        commands:
+          - show vtp status
+      delegate_to: "{{ unused_port_policy.vtp_server }}"
+      register: server_vtp_status
+
+    - name: VTP roles must match the design
+      ansible.builtin.assert:
+        that:
+          - access_vtp_status.stdout[0] is search(vtp_client_pattern)
+          - server_vtp_status.stdout[0] is search(vtp_server_pattern)
+        fail_msg: >-
+          {{ inventory_hostname }} must be a VTP client and
+          {{ unused_port_policy.vtp_server }} must be the VTP server.
+      vars:
+        vtp_client_pattern: >-
+          (?im)^VTP Operating Mode\s*:\s*Client\s*$
+        vtp_server_pattern: >-
+          (?im)^VTP Operating Mode\s*:\s*(?:Primary\s+)?Server\s*$
+
+    - name: Create the pre-change backup directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../backups-pre-change"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      when: not ansible_check_mode
+
+    - name: Back up running-config before hardening ports
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: "{{ playbook_dir }}/../backups-pre-change"
+          filename: "{{ inventory_hostname }}-before-unused-port-hardening.txt"
+      register: unused_port_backup
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Protect the raw pre-change backup
+      ansible.builtin.file:
+        path: "{{ unused_port_backup.backup_path }}"
+        state: file
+        mode: "0600"
+      delegate_to: localhost
+      when: not ansible_check_mode
+
+    - name: Ensure the parking VLAN exists on the VTP server
+      cisco.ios.ios_vlans:
+        config:
+          - vlan_id: "{{ unused_port_policy.vlan }}"
+            name: "{{ unused_port_policy.vlan_name }}"
+        state: merged
+      delegate_to: "{{ unused_port_policy.vtp_server }}"
+      register: parking_vlan_change
+
+    - name: Wait for VTP to propagate the parking VLAN
+      cisco.ios.ios_command:
+        commands:
+          - >-
+            show vlan brief | include ^{{ unused_port_policy.vlan }}
+      register: parking_vlan_propagation
+      changed_when: false
+      retries: 10
+      delay: 2
+      until: parking_vlan_propagation.stdout[0] is search(parking_vlan_pattern)
+      vars:
+        parking_vlan_pattern: >-
+          (?m)^{{ unused_port_policy.vlan }}\s+{{
+          unused_port_policy.vlan_name | regex_escape }}\s+active
+      when: not ansible_check_mode
+
+    - name: Apply the unused-port policy
+      cisco.ios.ios_config:
+        parents: "interface {{ item }}"
+        lines:
+          - "description {{ unused_port_policy.description }}"
+          - switchport mode access
+          - "switchport access vlan {{ unused_port_policy.vlan }}"
+          - switchport nonegotiate
+          - no cdp enable
+          - shutdown
+      loop: "{{ unused_ports[inventory_hostname] }}"
+      loop_control:
+        label: "{{ item }}"
+      register: parked_port_change
+
+    - name: Verify and save the unused-port configuration
+      when: not ansible_check_mode
+      block:
+        - name: Gather parking VLAN and port configuration
+          cisco.ios.ios_command:
+            commands:
+              - >-
+                show vlan brief | include ^{{ unused_port_policy.vlan }}
+              - "show running-config interface {{ item }}"
+          loop: "{{ unused_ports[inventory_hostname] }}"
+          loop_control:
+            label: "{{ item }}"
+          register: parked_port_verify
+
+        - name: Parking VLAN is active
+          ansible.builtin.assert:
+            that:
+              - item.stdout[0] is search(expected_vlan_pattern)
+          fail_msg: >-
+            VLAN {{ unused_port_policy.vlan }} is missing, incorrectly named,
+            or inactive on {{ inventory_hostname }}.
+          loop: "{{ parked_port_verify.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+          vars:
+            expected_vlan_pattern: >-
+              (?m)^{{ unused_port_policy.vlan }}\s+{{
+              unused_port_policy.vlan_name | regex_escape }}\s+active
+
+        - name: Every declared unused port matches policy
+          ansible.builtin.assert:
+            that:
+              - item.stdout[1] is search(expected_description)
+              - item.stdout[1] is search('(?m)^ switchport mode access$')
+              - item.stdout[1] is search(expected_access_vlan)
+              - item.stdout[1] is search('(?m)^ switchport nonegotiate$')
+              - item.stdout[1] is search('(?m)^ no cdp enable$')
+              - item.stdout[1] is search('(?m)^ shutdown$')
+          fail_msg: "{{ item.item }} does not match the unused-port policy."
+          loop: "{{ parked_port_verify.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+          vars:
+            expected_description: >-
+              (?m)^ description {{
+              unused_port_policy.description | regex_escape }}$
+            expected_access_vlan: >-
+              (?m)^ switchport access vlan {{ unused_port_policy.vlan }}$
+
+        - name: Save only after verification succeeds
+          cisco.ios.ios_config:
+            save_when: always
+          when: parking_vlan_change.changed or parked_port_change.changed
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}:
+          {{ 'check mode: would change'
+             if ansible_check_mode
+             and (parking_vlan_change.changed or parked_port_change.changed)
+             else 'check mode: already compliant'
+             if ansible_check_mode
+             else 'changed, verified and saved'
+             if (parking_vlan_change.changed or parked_port_change.changed)
+             else 'already compliant' }}

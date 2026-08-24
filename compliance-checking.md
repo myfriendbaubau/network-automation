@@ -34,6 +34,8 @@ baseline is defined; the firewall is not presented as audited.
 | Access | Port security | Every interface listed in `host_facing_ports` is an access port with port security |
 | Access | BPDU Guard | Every interface listed in `host_facing_ports` has BPDU Guard |
 | Access | DHCP snooping | Enabled globally and for that switch's access VLAN |
+| Access | Parking VLAN | VTP-propagated VLAN 999 exists as active `PARKING_LOT` |
+| Access | Unused ports | Declared ports are access-mode, parked, CDP-disabled and shut down |
 | Distribution | ACL rules | Ordered `MGMT-RESTRICT` rules exactly match inventory intent |
 | Distribution | ACL placement | Applied inbound on exactly the three intended SVIs |
 | Distribution | HSRP | Priority-110 groups match the design and no group 0 exists |

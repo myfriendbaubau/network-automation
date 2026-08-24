@@ -158,6 +158,57 @@
       register: c_snoop
       ignore_errors: true
 
+    - name: Gather parking VLAN configuration
+      cisco.ios.ios_command:
+        commands:
+          - "show vlan brief | include ^{{ unused_port_policy.vlan }}"
+      register: unused_vlan_state
+
+    - name: Parking VLAN is present and active
+      ansible.builtin.assert:
+        that:
+          - unused_vlan_state.stdout[0] is search(expected_parking_vlan)
+        fail_msg: >-
+          VLAN {{ unused_port_policy.vlan }} is missing, incorrectly named,
+          or inactive.
+      vars:
+        expected_parking_vlan: >-
+          (?m)^{{ unused_port_policy.vlan }}\s+{{
+          unused_port_policy.vlan_name | regex_escape }}\s+active
+      register: c_unused_vlan
+      ignore_errors: true
+
+    - name: Gather every declared unused interface
+      cisco.ios.ios_command:
+        commands:
+          - "show running-config interface {{ item }}"
+      loop: "{{ unused_ports[inventory_hostname] }}"
+      loop_control:
+        label: "{{ item }}"
+      register: unused_port_config
+
+    - name: Every unused interface matches the parking policy
+      ansible.builtin.assert:
+        that:
+          - item.stdout[0] is search(expected_unused_description)
+          - item.stdout[0] is search('(?m)^ switchport mode access$')
+          - item.stdout[0] is search(expected_unused_vlan)
+          - item.stdout[0] is search('(?m)^ switchport nonegotiate$')
+          - item.stdout[0] is search('(?m)^ no cdp enable$')
+          - item.stdout[0] is search('(?m)^ shutdown$')
+        fail_msg: "{{ item.item }} does not match the unused-port policy."
+      loop: "{{ unused_port_config.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      vars:
+        expected_unused_description: >-
+          (?m)^ description {{
+          unused_port_policy.description | regex_escape }}$
+        expected_unused_vlan: >-
+          (?m)^ switchport access vlan {{ unused_port_policy.vlan }}$
+      register: c_unused_ports
+      ignore_errors: true
+
     - name: Report access result
       ansible.builtin.debug:
         msg:
@@ -170,6 +221,12 @@
           - >-
             DHCP snoop    {{ 'FAIL'
             if (c_snoop is failed) else 'pass' }}
+          - >-
+            Parking VLAN  {{ 'FAIL'
+            if (c_unused_vlan is failed) else 'pass' }}
+          - >-
+            Unused ports  {{ 'FAIL'
+            if (c_unused_ports is failed) else 'pass' }}
 
     - name: Record access failures
       ansible.builtin.set_fact:
@@ -180,7 +237,11 @@
              + ([inventory_hostname ~ ': BPDU Guard missing on a host-facing port']
                 if (c_bpdu is failed) else [])
              + ([inventory_hostname ~ ': DHCP snooping missing for the access VLAN']
-                if (c_snoop is failed) else []) }}
+                if (c_snoop is failed) else [])
+             + ([inventory_hostname ~ ': parking VLAN is missing or incorrect']
+                if (c_unused_vlan is failed) else [])
+             + ([inventory_hostname ~ ': unused-port hardening differs from intent']
+                if (c_unused_ports is failed) else []) }}
 
         compliance_phases_completed: >-
           {{ (compliance_phases_completed | default([])) + ['access'] }}

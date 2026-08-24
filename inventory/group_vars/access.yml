@@ -37,3 +37,18 @@ host_facing_ports:
   ACC2: [Ethernet1/0]
   ACC3: [Ethernet1/0]
   ACC4: [Ethernet1/0, Ethernet1/1, Ethernet1/2]
+
+# Administratively unused ports are placed in a local, non-routed parking
+# VLAN. ACC4 Ethernet1/1 and Ethernet1/2 are intentionally absent because
+# they are active server-facing ports in VLAN 40.
+unused_port_policy:
+  vlan: 999
+  vlan_name: PARKING_LOT
+  description: "** UNUSED - parked **"
+  vtp_server: DIST1
+
+unused_ports:
+  ACC1: [Ethernet1/1, Ethernet1/2, Ethernet1/3]
+  ACC2: [Ethernet1/1, Ethernet1/2, Ethernet1/3]
+  ACC3: [Ethernet1/1, Ethernet1/2, Ethernet1/3]
+  ACC4: [Ethernet1/3]
