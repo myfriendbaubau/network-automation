@@ -92,7 +92,7 @@ aaa authentication http console LOCAL
 aaa authentication login-history
 http server enable
 http 10.0.10.12 255.255.255.255 inside-core1
-http 192.168.0.150 255.255.255.255 outside
+http 192.168.1.150 255.255.255.255 outside
 no snmp-server location
 no snmp-server contact
 crypto ipsec ikev2 ipsec-proposal AWS-PROPOSAL
@@ -228,6 +228,7 @@ no threat-detection statistics tcp-intercept
 ntp server 216.239.35.0
 ntp server 162.159.200.123
 dynamic-access-policy-record DfltAccessPolicy
+username asaadmin password <REDACTED> pbkdf2 privilege 15
 username cisco password <REDACTED> pbkdf2 privilege 15
 tunnel-group <REDACTED> type ipsec-l2l
 tunnel-group <REDACTED> ipsec-attributes
@@ -288,5 +289,5 @@ call-home
   subscribe-to-alert-group inventory periodic monthly
   subscribe-to-alert-group configuration periodic monthly
   subscribe-to-alert-group telemetry periodic daily
-Cryptochecksum:11a538d78574433f26b6c76ee0edbf08
+Cryptochecksum:7116cac412d75e43d5d8e306bb9a7c99
 : end
