@@ -151,10 +151,10 @@
           - expected_snooping_vlan in acc_snooping.stdout[0].splitlines()
         fail_msg: >-
           DHCP snooping must be enabled globally and for VLAN
-          {{ mgmt_svi[inventory_hostname].vlan }}
+          {{ access_vlan[inventory_hostname] }}
       vars:
         expected_snooping_vlan: >-
-          ip dhcp snooping vlan {{ mgmt_svi[inventory_hostname].vlan }}
+          ip dhcp snooping vlan {{ access_vlan[inventory_hostname] }}
       register: c_snoop
       ignore_errors: true
 

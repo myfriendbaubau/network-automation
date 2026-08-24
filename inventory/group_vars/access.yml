@@ -21,6 +21,15 @@ mgmt_svi:
     ip: 10.0.40.4
     gateway: 10.0.40.1
 
+# Client VLANs are intentionally separate from management addressing. After
+# the management migration every switch uses VLAN 30 for its SVI, while DHCP
+# snooping must continue to protect the VLAN carried by its endpoint ports.
+access_vlan:
+  ACC1: 10
+  ACC2: 20
+  ACC3: 30
+  ACC4: 40
+
 # Ports intended for endpoints. Compliance evaluates every listed interface;
 # a single protected port is not enough to mark the switch compliant.
 host_facing_ports:

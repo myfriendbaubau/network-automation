@@ -1,0 +1,270 @@
+---
+# One-time migration from per-user-VLAN management to dedicated VLAN 30.
+#
+# The CML IOS image rejects a scheduled reload issued over SSH, so recovery
+# must be armed from the device console before this playbook is started:
+#
+#   write memory
+#   reload in 15
+#   show reload
+#
+# The playbook refuses to change the device unless `show reload` confirms the
+# timer. Run against exactly one device, then cancel the reload from its CML
+# console only after the final success message.
+
+- name: Migrate one access switch to management VLAN
+  hosts: access
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  vars:
+    controller_ip: 10.0.50.10
+    subnet_mask: 255.255.255.0
+
+  pre_tasks:
+    - name: Exactly one switch must be selected
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+        fail_msg: >-
+          Select exactly one switch with --limit. Never run this migration
+          against the entire access group.
+        quiet: true
+      run_once: true  # noqa: run-once[task]
+
+    - name: Check mode is not supported for an address migration
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+        fail_msg: >-
+          Do not use --check for this playbook. It cannot verify a new SSH
+          address until the temporary running configuration is applied.
+        quiet: true
+
+    - name: Migration data must exist
+      ansible.builtin.assert:
+        that:
+          - management_migration is defined
+        fail_msg: "management_migration is not defined."
+        quiet: true
+
+    - name: Selected switch must have a migration entry
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname in management_migration
+        fail_msg: "No migration entry exists for {{ inventory_hostname }}."
+        quiet: true
+
+    - name: Load the migration values
+      ansible.builtin.set_fact:
+        migration: "{{ management_migration[inventory_hostname] }}"
+        old_connection_ip: "{{ ansible_host }}"
+
+    - name: Validate the migration values
+      ansible.builtin.assert:
+        that:
+          - old_connection_ip == migration.old_ip
+          - migration.old_ip != migration.new_ip
+          - migration.old_vlan != migration.new_vlan
+          - migration.new_vlan | int == 30
+          - migration.new_ip.split('.')[0:3] == migration.new_gateway.split('.')[0:3]
+          - migration.new_ip not in existing_mgmt_ips
+          - planned_new_ips | unique | length == planned_new_ips | length
+        fail_msg: >-
+          The migration data does not match the current inventory, conflicts
+          with an existing management address, or contains an invalid target.
+        quiet: true
+      vars:
+        existing_mgmt_ips: "{{ mgmt_svi.values() | map(attribute='ip') | list }}"
+        planned_new_ips: >-
+          {{ management_migration.values() | map(attribute='new_ip') | list }}
+
+  tasks:
+    - name: Create the pre-change backup directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../backups-pre-change"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+
+    - name: Back up the current running configuration
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: "{{ playbook_dir }}/../backups-pre-change"
+          filename: "{{ inventory_hostname }}-before-mgmt-migration.txt"
+      register: migration_backup
+      changed_when: false
+
+    - name: Protect the raw backup
+      ansible.builtin.file:
+        path: "{{ migration_backup.backup_path }}"
+        state: file
+        mode: "0600"
+      delegate_to: localhost
+
+    - name: Gather current SVI, VLAN and trunk state
+      cisco.ios.ios_command:
+        commands:
+          - >-
+            show ip interface brief | include ^Vlan{{ migration.old_vlan }}
+          - "show vlan brief | include ^{{ migration.new_vlan }}"
+          - show interfaces trunk
+      register: migration_precheck
+
+    - name: Validate current connectivity and VLAN 30
+      ansible.builtin.assert:
+        that:
+          - migration.old_ip in migration_precheck.stdout[0]
+          - migration.new_vlan | string in migration_precheck.stdout[1]
+          - migration.new_vlan | string in migration_precheck.stdout[2]
+        fail_msg: >-
+          The old management SVI is missing, or VLAN 30 is not active and
+          allowed on the switch trunks.
+        quiet: true
+
+    - name: Save the known-good configuration before migration
+      cisco.ios.ios_config:
+        save_when: always
+
+    - name: Check the console recovery reload status
+      cisco.ios.ios_command:
+        commands:
+          - show reload
+      register: recovery_reload
+
+    - name: Recovery reload must be armed from the CML console
+      ansible.builtin.assert:
+        that:
+          - recovery_reload.stdout[0] is search('(?i)reload.*scheduled')
+        fail_msg: >-
+          No recovery reload is scheduled. Open the device CML console, run
+          `reload in 15`, confirm it, verify with `show reload`, and rerun.
+        quiet: true
+
+    - name: Perform protected management migration
+      block:
+        - name: Add the new management SVI
+          cisco.ios.ios_config:
+            parents: "interface Vlan{{ migration.new_vlan }}"
+            lines:
+              - description MGMT - dedicated management
+              - "ip address {{ migration.new_ip }} {{ subnet_mask }}"
+              - no shutdown
+
+        - name: Add temporary route to the controller
+          cisco.ios.ios_config:
+            lines:
+              - >-
+                ip route {{ controller_ip }} 255.255.255.255
+                {{ migration.new_gateway }}
+
+        - name: Wait for SSH on the new address
+          ansible.builtin.wait_for:
+            host: "{{ migration.new_ip }}"
+            port: 22
+            state: started
+            connect_timeout: 5
+            timeout: 45
+          delegate_to: localhost
+
+        - name: Close the old persistent connection
+          ansible.builtin.meta: reset_connection
+
+        - name: Change Ansible to the new address
+          ansible.builtin.set_fact:
+            ansible_host: "{{ migration.new_ip }}"
+
+        - name: Verify through a new SSH connection
+          cisco.ios.ios_command:
+            commands:
+              - >-
+                show ip interface brief | include ^Vlan{{ migration.new_vlan }}
+              - "show ip route {{ controller_ip }}"
+          register: new_connection_test
+
+        - name: Confirm new management connectivity
+          ansible.builtin.assert:
+            that:
+              - migration.new_ip in new_connection_test.stdout[0]
+              - new_connection_test.stdout[0] is search('up\\s+up')
+              - migration.new_gateway in new_connection_test.stdout[1]
+            fail_msg: >-
+              Ansible reached the new address, but its SVI or temporary
+              controller route is incorrect.
+            quiet: true
+
+        - name: Install new default route and remove old routes
+          cisco.ios.ios_config:
+            lines:
+              - >-
+                ip route 0.0.0.0 0.0.0.0 {{ migration.new_gateway }}
+              - >-
+                no ip route 0.0.0.0 0.0.0.0 {{ migration.old_gateway }}
+              - "no ip default-gateway {{ migration.old_gateway }}"
+              - >-
+                no ip route {{ controller_ip }} 255.255.255.255
+                {{ migration.new_gateway }}
+
+        - name: Remove the old management IP
+          cisco.ios.ios_config:
+            parents: "interface Vlan{{ migration.old_vlan }}"
+            lines:
+              - "no ip address {{ migration.old_ip }} {{ subnet_mask }}"
+
+        - name: Close the transitional SSH connection
+          ansible.builtin.meta: reset_connection
+
+        - name: Confirm SSH still works after cleanup
+          ansible.builtin.wait_for:
+            host: "{{ migration.new_ip }}"
+            port: 22
+            state: started
+            connect_timeout: 5
+            timeout: 45
+          delegate_to: localhost
+
+        - name: Gather final management state through fresh SSH
+          cisco.ios.ios_command:
+            commands:
+              - >-
+                show ip interface brief | include ^Vlan{{ migration.new_vlan }}
+              - show ip route 0.0.0.0
+          register: final_management_state
+
+        - name: Validate final SVI and route
+          ansible.builtin.assert:
+            that:
+              - migration.new_ip in final_management_state.stdout[0]
+              - final_management_state.stdout[0] is search('up\\s+up')
+              - migration.new_gateway in final_management_state.stdout[1]
+            fail_msg: >-
+              The final management SVI or default route is incorrect. Leave
+              the console recovery reload scheduled and do not save.
+            quiet: true
+
+        - name: Save the verified new configuration
+          cisco.ios.ios_config:
+            save_when: always
+
+        - name: Report successful migration
+          ansible.builtin.debug:
+            msg: >-
+              {{ inventory_hostname }} migrated from {{ old_connection_ip }}
+              to {{ migration.new_ip }}. Cancel the reload from its CML
+              console now, then update hosts.yml and access.yml.
+
+      rescue:
+        - name: Explain console recovery
+          ansible.builtin.debug:
+            msg: >-
+              Migration failed. Do not save or cancel the console reload.
+              The switch should boot its old saved configuration when the
+              timer expires.
+
+        - name: Stop the migration
+          ansible.builtin.fail:
+            msg: >-
+              Protected migration failed for {{ inventory_hostname }}.
+              Monitor its CML console and wait for automatic recovery.

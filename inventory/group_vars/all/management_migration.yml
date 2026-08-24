@@ -1,0 +1,26 @@
+---
+# One-time transition data. The normal inventory keeps the current address
+# until each switch has been migrated and verified. ACC3 is absent because it
+# already uses VLAN 30 and 10.0.30.4 for management.
+management_migration:
+  ACC1:
+    old_vlan: 10
+    old_ip: 10.0.10.4
+    old_gateway: 10.0.10.1
+    new_vlan: 30
+    new_ip: 10.0.30.5
+    new_gateway: 10.0.30.1
+  ACC2:
+    old_vlan: 20
+    old_ip: 10.0.20.4
+    old_gateway: 10.0.20.1
+    new_vlan: 30
+    new_ip: 10.0.30.6
+    new_gateway: 10.0.30.1
+  ACC4:
+    old_vlan: 40
+    old_ip: 10.0.40.4
+    old_gateway: 10.0.40.1
+    new_vlan: 30
+    new_ip: 10.0.30.7
+    new_gateway: 10.0.30.1
