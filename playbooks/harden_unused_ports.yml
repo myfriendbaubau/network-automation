@@ -55,10 +55,13 @@
       ansible.builtin.assert:
         that:
           - item.stdout[0] | length > 0
-          - item.stdout[0] is not search(' is up,')
+          - >-
+            item.stdout[0] is not search(' is up,')
+            or (confirm_connected_unused_ports | default(false) | bool)
         fail_msg: >-
           {{ item.item }} is missing or physically up. Confirm the interface,
-          cabling and inventory instead of shutting it down automatically.
+          cabling, CDP neighbours and learned MAC addresses. Only then re-run
+          with -e confirm_connected_unused_ports=true.
       loop: "{{ unused_port_state.results }}"
       loop_control:
         label: "{{ item.item }}"
