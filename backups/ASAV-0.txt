@@ -210,11 +210,14 @@ crypto ikev2 policy 10
  lifetime seconds 86400
 crypto ikev2 enable outside
 telnet timeout 10
+ssh scopy enable
 ssh stricthostkeycheck
 ssh timeout 5
 ssh key-exchange group dh-group14-sha256
 ssh key-exchange hostkey ecdsa
 ssh 10.0.50.0 255.255.255.0 inside-core1
+ssh 192.168.1.100 255.255.255.255 outside
+ssh 192.168.1.150 255.255.255.255 outside
 console timeout 0
 console serial
 threat-detection basic-threat
@@ -223,6 +226,7 @@ no threat-detection statistics tcp-intercept
 ntp server 216.239.35.0
 ntp server 162.159.200.123
 dynamic-access-policy-record DfltAccessPolicy
+username asdmtransfer password <REDACTED> pbkdf2 privilege 15
 username cisco password <REDACTED> pbkdf2 privilege 15
 tunnel-group <REDACTED> type ipsec-l2l
 tunnel-group <REDACTED> ipsec-attributes
@@ -283,5 +287,5 @@ call-home
   subscribe-to-alert-group inventory periodic monthly
   subscribe-to-alert-group configuration periodic monthly
   subscribe-to-alert-group telemetry periodic daily
-Cryptochecksum:0db1b2652f18ca732829e5e91c2874a1
+Cryptochecksum:e5e7b1082a885468936853d404633e19
 : end
