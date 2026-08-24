@@ -9,8 +9,6 @@ Config-as-code for the 3-tier lab. An Ansible controller inside the fabric manag
 > never reused on a production or personal network.
 
 Builds on the management network described in [`management-network.md`](./management-network.md).
-The unused-port rollout is documented in
-[`unused-port-hardening.md`](./unused-port-hardening.md).
 The network itself is documented here:
 https://github.com/myfriendbaubau/3-Tier-Enterprise-Network-Lab
 
