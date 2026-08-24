@@ -137,7 +137,8 @@
     - name: Recovery reload must be armed from the CML console
       ansible.builtin.assert:
         that:
-          - recovery_reload.stdout[0] is search('(?i)reload.*scheduled')
+          - recovery_reload.stdout[0] is not search('(?i)no reload')
+          - recovery_reload.stdout[0] is search('(?im)^reload scheduled for')
         fail_msg: >-
           No recovery reload is scheduled. Open the device CML console, run
           `reload in 15`, confirm it, verify with `show reload`, and rerun.
