@@ -93,9 +93,9 @@ spanning-tree mode rapid-pvst
 spanning-tree extend system-id
 spanning-tree vlan 10,30 priority 4096
 spanning-tree vlan 20,40 priority 8192
-\1 <REDACTED>
+enable secret 9 <REDACTED>
 !
-\1 <REDACTED>
+username cisco secret 9 <REDACTED>
 !
 vlan internal allocation policy ascending
 !

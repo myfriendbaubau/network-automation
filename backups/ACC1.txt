@@ -96,9 +96,9 @@ spanning-tree mode rapid-pvst
 spanning-tree portfast default
 spanning-tree portfast bpduguard default
 spanning-tree extend system-id
-\1 <REDACTED>
+enable secret 9 <REDACTED>
 !
-\1 <REDACTED>
+username cisco secret 9 <REDACTED>
 !
 vlan internal allocation policy ascending
 !
@@ -204,7 +204,7 @@ ip route 0.0.0.0 0.0.0.0 10.0.10.1
 no logging btrace
 logging origin-id hostname
 logging host 10.0.60.10
-\1 <REDACTED> RO
+snmp-server community <REDACTED> RO
 !
 !
 !

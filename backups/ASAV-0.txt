@@ -1,13 +1,13 @@
 : Saved
 
 : 
-\1 <REDACTED>
+: Serial Number: <REDACTED>
 : Hardware:   ASAv, 2048 MB RAM, CPU Pentium II 3686 MHz
 :
 ASA Version 9.23(1) 
 !
 hostname ASAV-0
-\1 <REDACTED> pbkdf2
+enable password <REDACTED> pbkdf2
 service-module 0 keepalive-timeout 4
 service-module 0 keepalive-counter 6
 names
@@ -95,7 +95,7 @@ crypto ipsec ikev2 ipsec-proposal AWS-PROPOSAL
  protocol esp integrity sha-256
 crypto ipsec security-association pmtu-aging infinite
 crypto map OUTSIDE-MAP 10 match address VPN-TO-AWS
-crypto map OUTSIDE-MAP 10 \1 <REDACTED> 
+crypto map OUTSIDE-MAP 10 set peer <REDACTED> 
 crypto map OUTSIDE-MAP 10 set ikev2 ipsec-proposal AWS-PROPOSAL
 crypto map OUTSIDE-MAP interface outside
 crypto ca trustpoint _SmartCallHome_ServerCA
@@ -223,11 +223,11 @@ no threat-detection statistics tcp-intercept
 ntp server 216.239.35.0
 ntp server 162.159.200.123
 dynamic-access-policy-record DfltAccessPolicy
-\1 <REDACTED> pbkdf2 privilege 15
-\1 <REDACTED> type ipsec-l2l
-\1 <REDACTED> ipsec-attributes
- ikev2 remote-authentication \1 <REDACTED>
- ikev2 local-authentication \1 <REDACTED>
+username cisco password <REDACTED> pbkdf2 privilege 15
+tunnel-group <REDACTED> type ipsec-l2l
+tunnel-group <REDACTED> ipsec-attributes
+ ikev2 remote-authentication pre-shared-key <REDACTED>
+ ikev2 local-authentication pre-shared-key <REDACTED>
 !
 class-map inspection_default
  match default-inspection-traffic
