@@ -20,6 +20,14 @@
       - '(key-string(?: \d)?) \S+'
       - '(pre-shared-key) \S+'
       - '(snmp-server community) \S+'
+    ios_unsafe_patterns:
+      - '\$\d\$'
+      - '(?i)\b7\s+[0-9A-Fa-f]{10,}\b'
+      - '(?im)^enable (?:secret|password)(?! (?:\d+ )?<REDACTED>(?:\s|$))'
+      - '(?im)^username \S+ .*?(?:secret|password)(?! (?:\d+ )?<REDACTED>(?:\s|$))'
+      - '(?im)^key-string(?! (?:\d+ )?<REDACTED>(?:\s|$))'
+      - '(?i)pre-shared-key(?! <REDACTED>(?:\s|$))'
+      - '(?im)^snmp-server community(?! <REDACTED>(?:\s|$))'
 
   tasks:
     - name: Retrieve IOS running configuration
@@ -45,29 +53,12 @@
     - name: Verify the IOS backup is safe to write
       ansible.builtin.assert:
         that:
-          - sanitized_config is not search('\$\d\$')
-          - sanitized_config is not search('(?i)\b7\s+[0-9A-Fa-f]{10,}\b')
-          - >-
-            sanitized_config is not search(
-            '(?im)^enable (?:secret|password)(?: \d+)? (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?im)^username \S+ .*?(?:secret|password)(?: \d+)? '
-            '(?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?i)pre-shared-key (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?im)^snmp-server community (?!<REDACTED>)\S+'
-            )
+          - sanitized_config is not search(item)
         fail_msg: >-
           {{ inventory_hostname }}: credential material survived in-memory
           redaction. Nothing was written or committed.
         quiet: true
+      loop: "{{ ios_unsafe_patterns }}"
       no_log: true
 
     - name: Write the sanitized IOS backup
@@ -93,6 +84,15 @@
       - '(: Serial Number:) \S+'
       - '(set peer) \S+'
       - '(tunnel-group) \d+\.\d+\.\d+\.\d+'
+    asa_unsafe_patterns:
+      - '\$\d\$'
+      - '(?im)^enable password(?! (?:\d+ )?<REDACTED>(?:\s|$))'
+      - '(?im)^username \S+ .*?password(?! (?:\d+ )?<REDACTED>(?:\s|$))'
+      - '(?im)^passwd(?! (?:\d+ )?<REDACTED>(?:\s|$))'
+      - '(?i)pre-shared-key(?! <REDACTED>(?:\s|$))'
+      - '(?im)^: Serial Number:(?! <REDACTED>(?:\s|$))'
+      - '(?i)set peer(?! <REDACTED>(?:\s|$))'
+      - '(?im)^tunnel-group(?! <REDACTED>(?:\s|$)) \d+\.\d+\.\d+\.\d+'
 
   tasks:
     - name: Retrieve ASA running configuration
@@ -118,35 +118,12 @@
     - name: Verify the ASA backup is safe to write
       ansible.builtin.assert:
         that:
-          - sanitized_config is not search('\$\d\$')
-          - >-
-            sanitized_config is not search(
-            '(?im)^enable password(?: \d+)? (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?im)^username \S+ password(?: \d+)? (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?i)pre-shared-key (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?im)^: Serial Number: (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?i)set peer (?!<REDACTED>)\S+'
-            )
-          - >-
-            sanitized_config is not search(
-            '(?im)^tunnel-group (?!<REDACTED>)\d+\.\d+\.\d+\.\d+'
-            )
+          - sanitized_config is not search(item)
         fail_msg: >-
           {{ inventory_hostname }}: credential or identifier material survived
           in-memory redaction. Nothing was written or committed.
         quiet: true
+      loop: "{{ asa_unsafe_patterns }}"
       no_log: true
 
     - name: Write the sanitized ASA backup

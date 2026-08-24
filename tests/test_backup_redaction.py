@@ -16,8 +16,10 @@ class BackupRedactionTests(unittest.TestCase):
         )
         cls.ios_patterns = plays[0]["vars"]["ios_scrub_patterns"]
         cls.ios_replacement = plays[0]["vars"]["redaction_replacement"]
+        cls.ios_unsafe_patterns = plays[0]["vars"]["ios_unsafe_patterns"]
         cls.asa_patterns = plays[1]["vars"]["asa_scrub_patterns"]
         cls.asa_replacement = plays[1]["vars"]["redaction_replacement"]
+        cls.asa_unsafe_patterns = plays[1]["vars"]["asa_unsafe_patterns"]
 
     @staticmethod
     def scrub(config, patterns, replacement):
@@ -34,6 +36,9 @@ key-string 7 121A0C041104
 pre-shared-key IOS_PSK
 snmp-server community public RO
 """
+
+        for pattern in self.ios_unsafe_patterns[1:]:
+            self.assertIsNotNone(re.search(pattern, source), pattern)
 
         result = self.scrub(source, self.ios_patterns, self.ios_replacement)
 
@@ -58,6 +63,8 @@ snmp-server community <REDACTED> RO
 """,
         )
         self.assertNotIn(r"\1 <REDACTED>", result)
+        for pattern in self.ios_unsafe_patterns:
+            self.assertIsNone(re.search(pattern, result), pattern)
 
     def test_asa_credentials_and_identifiers_are_redacted(self):
         source = """\
@@ -69,6 +76,9 @@ pre-shared-key ASA_PSK
 set peer 203.0.113.7
 tunnel-group 203.0.113.7 type ipsec-l2l
 """
+
+        for pattern in self.asa_unsafe_patterns[1:]:
+            self.assertIsNotNone(re.search(pattern, source), pattern)
 
         result = self.scrub(source, self.asa_patterns, self.asa_replacement)
 
@@ -94,6 +104,8 @@ tunnel-group <REDACTED> type ipsec-l2l
 """,
         )
         self.assertNotIn(r"\1 <REDACTED>", result)
+        for pattern in self.asa_unsafe_patterns:
+            self.assertIsNone(re.search(pattern, result), pattern)
 
 
 if __name__ == "__main__":
