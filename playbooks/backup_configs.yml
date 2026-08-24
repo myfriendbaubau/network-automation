@@ -11,6 +11,7 @@
 
   vars:
     backup_file: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+    redaction_replacement: '\g<1> <REDACTED>'
     ios_scrub_patterns:
       - '(enable secret(?: \d)?) \S+'
       - '(enable password(?: \d)?) \S+'
@@ -37,7 +38,7 @@
       ansible.builtin.set_fact:
         sanitized_config: >-
           {{ sanitized_config
-             | regex_replace(item, '\\1 <REDACTED>', multiline=true) }}
+             | regex_replace(item, redaction_replacement, multiline=true) }}
       loop: "{{ ios_scrub_patterns }}"
       no_log: true
 
@@ -83,6 +84,7 @@
 
   vars:
     backup_file: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}.txt"
+    redaction_replacement: '\g<1> <REDACTED>'
     asa_scrub_patterns:
       - '(enable password(?: \d)?) \S+'
       - '(username \S+ password(?: \d)?) \S+'
@@ -109,7 +111,7 @@
       ansible.builtin.set_fact:
         sanitized_config: >-
           {{ sanitized_config
-             | regex_replace(item, '\\1 <REDACTED>', multiline=true) }}
+             | regex_replace(item, redaction_replacement, multiline=true) }}
       loop: "{{ asa_scrub_patterns }}"
       no_log: true
 
