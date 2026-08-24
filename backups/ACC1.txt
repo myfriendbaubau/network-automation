@@ -1,6 +1,6 @@
 Building configuration...
 
-Current configuration : 6439 bytes
+Current configuration : 6499 bytes
 !
 ! Last configuration change at 15:54:28 UTC Mon Aug 24 2026 by cisco
 ! NVRAM config last updated at 15:54:32 UTC Mon Aug 24 2026 by cisco
@@ -174,6 +174,7 @@ interface Ethernet1/0
  switchport port-security mac-address sticky
  switchport port-security mac-address sticky 5254.0010.ef81
  switchport port-security mac-address sticky 5254.006a.49bf
+ switchport port-security mac-address sticky 5254.00ba.7bfa
  switchport port-security
  bandwidth 1000000
  spanning-tree portfast

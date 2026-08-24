@@ -1,8 +1,8 @@
 Building configuration...
 
-Current configuration : 6562 bytes
+Current configuration : 6611 bytes
 !
-! Last configuration change at 16:29:57 UTC Mon Aug 24 2026 by cisco
+! Last configuration change at 18:15:57 UTC Mon Aug 24 2026 by cisco
 ! NVRAM config last updated at 16:01:47 UTC Mon Aug 24 2026 by cisco
 !
 version 17.16
@@ -184,6 +184,7 @@ interface Ethernet1/1
  switchport mode access
  switchport port-security maximum 3
  switchport port-security mac-address sticky
+ switchport port-security mac-address sticky 5254.0008.326a
  switchport port-security
  bandwidth 1000000
  spanning-tree portfast
@@ -201,11 +202,10 @@ interface Ethernet1/2
 !
 interface Ethernet1/3
  description ** UNUSED - parked **
- switchport access vlan 999
+ switchport access vlan 40
  switchport mode access
  switchport nonegotiate
  bandwidth 1000000
- shutdown
  no cdp enable
 !
 interface Vlan30

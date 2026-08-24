@@ -65,6 +65,7 @@ no failover
 no failover wait-disable
 no monitor-interface service-module 
 icmp unreachable rate-limit 1 burst-size 1
+asdm image disk0:/asdm-openjre-7231.bin
 no asdm history enable
 arp timeout 14400
 no arp permit-nonconnected
@@ -87,7 +88,11 @@ timeout conn-holddown 0:00:15
 timeout igp stale-route 0:01:10
 user-identity default-domain LOCAL
 aaa authentication ssh console LOCAL 
+aaa authentication http console LOCAL 
 aaa authentication login-history
+http server enable
+http 10.0.10.12 255.255.255.255 inside-core1
+http 192.168.0.150 255.255.255.255 outside
 no snmp-server location
 no snmp-server contact
 crypto ipsec ikev2 ipsec-proposal AWS-PROPOSAL
@@ -210,14 +215,11 @@ crypto ikev2 policy 10
  lifetime seconds 86400
 crypto ikev2 enable outside
 telnet timeout 10
-ssh scopy enable
 ssh stricthostkeycheck
 ssh timeout 5
 ssh key-exchange group dh-group14-sha256
 ssh key-exchange hostkey ecdsa
 ssh 10.0.50.0 255.255.255.0 inside-core1
-ssh 192.168.1.100 255.255.255.255 outside
-ssh 192.168.1.150 255.255.255.255 outside
 console timeout 0
 console serial
 threat-detection basic-threat
@@ -226,7 +228,6 @@ no threat-detection statistics tcp-intercept
 ntp server 216.239.35.0
 ntp server 162.159.200.123
 dynamic-access-policy-record DfltAccessPolicy
-username asdmtransfer password <REDACTED> pbkdf2 privilege 15
 username cisco password <REDACTED> pbkdf2 privilege 15
 tunnel-group <REDACTED> type ipsec-l2l
 tunnel-group <REDACTED> ipsec-attributes
@@ -287,5 +288,5 @@ call-home
   subscribe-to-alert-group inventory periodic monthly
   subscribe-to-alert-group configuration periodic monthly
   subscribe-to-alert-group telemetry periodic daily
-Cryptochecksum:e5e7b1082a885468936853d404633e19
+Cryptochecksum:11a538d78574433f26b6c76ee0edbf08
 : end
