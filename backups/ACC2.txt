@@ -1,9 +1,9 @@
 Building configuration...
 
-Current configuration : 5903 bytes
+Current configuration : 5949 bytes
 !
-! Last configuration change at 12:16:29 UTC Mon Aug 24 2026 by cisco
-! NVRAM config last updated at 12:15:30 UTC Mon Aug 24 2026 by cisco
+! Last configuration change at 14:06:28 UTC Mon Aug 24 2026 by cisco
+! NVRAM config last updated at 14:09:09 UTC Mon Aug 24 2026 by cisco
 !
 version 17.16
 service timestamps debug datetime msec
@@ -188,9 +188,12 @@ interface Ethernet1/3
 !
 interface Vlan20
  description GUESTS - management
- ip address 10.0.20.4 255.255.255.0
+ no ip address
 !
-ip default-gateway 10.20.0.1
+interface Vlan30
+ description MGMT - dedicated management
+ ip address 10.0.30.6 255.255.255.0
+!
 ip forward-protocol nd
 ip forward-protocol udp
 !
@@ -198,7 +201,7 @@ ip forward-protocol udp
 ip http server
 ip http secure-server
 ip ssh bulk-mode 131072
-ip route 0.0.0.0 0.0.0.0 10.0.20.1
+ip route 0.0.0.0 0.0.0.0 10.0.30.1
 !
 no logging btrace
 logging origin-id hostname
